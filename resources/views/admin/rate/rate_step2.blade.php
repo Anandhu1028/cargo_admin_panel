@@ -44,7 +44,7 @@
                                     </h6>
                                 </div>
 
-                                <div class="card-body p-0 mt-1">
+                                <div class="card-body p-0 mt-">
                                     <div class="table-responsive">
                                         <table class="table table-hover align-middle mb-0">
                                             <thead class="table-light text-center">

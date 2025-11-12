@@ -162,14 +162,13 @@ public function rateStep1Store(Request $request)
     return redirect()->route('rate.step2', $calc->id);
 }
 
-
 public function rateStep2($calcId)
 {
     $calc = Calculation::with('details')->findOrFail($calcId);
     $rules = config('rate_rules.origin');
     $cbm   = (float) ($calc->cbm ?? 0);
 
-    // 🔹 Build lookup of saved details
+    // 🔹 Lookup of saved details (keyed by group|particular)
     $saved = $calc->details->keyBy(function ($d) {
         return strtolower(trim($d->group_name)) . '|' . strtolower(trim($d->particular));
     });
@@ -193,7 +192,7 @@ public function rateStep2($calcId)
             if (str_contains($particular, 'collection - van up to 3 cbm') && $cbm > 3) continue;
             if (str_contains($particular, 'collection - 3 tone up to 15 cbm') && $cbm <= 3) continue;
 
-            // 🔹 If we already have saved data, use it
+            // 🔹 If saved data exists, use it
             if ($saved->has($key)) {
                 $d = $saved[$key];
                 $item['unit']   = $d->unit;
@@ -202,29 +201,37 @@ public function rateStep2($calcId)
                 $item['roe']    = $d->roe;
                 $item['amount'] = $d->amount;
             } else {
-                // Otherwise, compute default qty and amount
-                $isCollection = str_contains($particular, 'collection - van up to 3 cbm') ||
-                                str_contains($particular, 'collection - 3 tone up to 15 cbm');
+                // 🔹 Otherwise apply proper defaults
+                $isPacking = str_contains(strtolower($particular), 'packing & materials');
                 $isLabour  = str_contains(strtolower($particular), 'labour');
                 $isOther   = str_contains(strtolower($particular), 'other charges');
                 $isSpecial = str_contains(strtolower($particular), 'special services');
-                $isPacking = str_contains(strtolower($particular), 'packing & materials');
+                $isStorage = str_contains(strtolower($particular), 'storage');
 
-                if ($isLabour) {
-                    $qty = 0;
-                    $amount = 0;
-                } elseif ($isPacking) {
-                    $qty = $cbm;
-                    $amount = round($rate * $cbm * $roe, 2);
-                } elseif ($isOther || $isSpecial) {
-                    $qty = $cbm ?: 1;
-                    $amount = 0;
-                } elseif ($unit === 'CBM' || $isCollection) {
-                    $qty = $cbm ?: 1;
-                    $amount = round($rate * $qty * $roe, 2);
-                } else {
-                    $amount = round($rate * $qty * $roe, 2);
-                }
+               if ($isPacking) {
+                // ✅ Only PACKING & MATERIALS uses CBM from Step 1
+                $qty = $cbm;
+                $amount = round($rate * $cbm * $roe, 2);
+            } elseif ($isLabour) {
+                $qty = 1;
+                $amount = round($rate * $qty * $roe, 2);
+            } elseif ($isOther) {
+                // ✅ “Other Charges” — qty = 0, user will enter rate manually
+                $qty = 0;
+                $rate = 0; // clear default
+                $amount = 0;
+            } elseif ($isSpecial) {
+                $qty = 1;
+                $rate = 0;
+                $amount = 0;
+            } elseif ($isStorage) {
+                $qty = 0;
+                $amount = 0;
+            } else {
+                $qty = 1;
+                $amount = round($rate * $qty * $roe, 2);
+            }
+
 
                 $item['unit']   = $unit;
                 $item['qty']    = $qty;
@@ -242,7 +249,6 @@ public function rateStep2($calcId)
         'rules' => $filtered,
     ]);
 }
-
 
 
 public function rateStep2Store(Request $request, $calcId)
@@ -266,36 +272,45 @@ public function rateStep2Store(Request $request, $calcId)
             if (str_contains($key, 'van up to 3') && $cbm > 3) continue;
             if (str_contains($key, '3 tone') && $cbm <= 3) continue;
 
-            // Always check if user entered new qty / rate
+            // Read user inputs
             $userQty  = $request->input("qty.$group.$particular");
             $userRate = $request->input("rate.$group.$particular");
 
             if ($userQty !== null && $userQty !== '') $qty = (float) $userQty;
             if ($userRate !== null && $userRate !== '') $rate = (float) $userRate;
 
-            // Conditional logic
-            if (str_contains($key, 'labour')) {
-                $qty = (float) $request->input("labour_qty.$group.$particular", $qty);
-                $amount = round($rate * $qty * $roe, 2);
-            } elseif (str_contains($key, 'packing & materials')) {
-                $unit = $request->input("packing_unit.$group.$particular", $unit);
-                $qty  = $cbm;
-                $amount = round($rate * $qty * $roe, 2);
-            } elseif (str_contains($key, 'other charges')) {
-                $unit = $request->input("other_unit.$group.$particular", $unit);
-                $rate = (float) $request->input("other_rate.$group.$particular", $rate);
-                $qty  = $cbm ?: 1;
-                $amount = round($rate * $qty * $roe, 2);
-            } elseif (str_contains($key, 'special services')) {
-                $rate = (float) $request->input("special_rate.$group.$particular", $rate);
-                $qty  = $cbm ?: 1;
-                $amount = round($rate * $qty * $roe, 2);
-            } elseif ($unit === 'CBM') {
-                $qty = $cbm ?: 1;
-                $amount = round($rate * $qty * $roe, 2);
-            } else {
-                $amount = round($rate * $qty * $roe, 2);
-            }
+            // 🔹 Core logic
+           if (str_contains($key, 'packing & materials')) {
+        // ✅ PACKING uses CBM from Step 1
+        $unit = $request->input("packing_unit.$group.$particular", $unit);
+        $qty  = $cbm;
+        $amount = round($rate * $qty * $roe, 2);
+    }
+    elseif (str_contains($key, 'labour')) {
+        $qty = (float) $request->input("labour_qty.$group.$particular", 1);
+        $amount = round($rate * $qty * $roe, 2);
+    }
+    elseif (str_contains($key, 'other charges')) {
+        // ✅ “Other Charges” — allow editable rate input
+        $unit = $request->input("other_unit.$group.$particular", $unit);
+        $rate = (float) $request->input("other_rate.$group.$particular", $rate);
+        $qty  = 0; // stays zero unless you later change logic
+        $amount = round($rate * $qty * $roe, 2); // will be zero now (qty=0)
+    }
+    elseif (str_contains($key, 'special services')) {
+        $rate = (float) $request->input("special_rate.$group.$particular", $rate);
+        $qty  = 1;
+        $amount = 0;
+    }
+    elseif (str_contains($key, 'storage')) {
+        $qty = 0;
+        $amount = 0;
+    }
+    else {
+        $qty = 1;
+        $amount = round($rate * $qty * $roe, 2);
+    }
+
 
             $detailsData[] = [
                 'calculation_id' => $calc->id,
@@ -313,19 +328,17 @@ public function rateStep2Store(Request $request, $calcId)
     }
 
     DB::transaction(function () use ($calc, $detailsData) {
-        // Delete existing details and reinsert
         $calc->details()->delete();
         CalculationDetail::insert($detailsData);
 
-        // ✅ Update total & ensure customer_name always stays synced
         $calc->update([
             'total_amount'  => array_sum(array_column($detailsData, 'amount')),
-            'customer_name' => optional($calc->customer)->name, // sync from relation
+            'customer_name' => optional($calc->customer)->name,
         ]);
     });
 
     return redirect()->route('rate.step3', $calc->id)
-        ->with('success', 'Origin charges saved successfully (with correct qty and rate).');
+        ->with('success', 'Origin charges saved successfully (CBM applied correctly to Packing & Materials).');
 }
 
 
