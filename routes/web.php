@@ -5,6 +5,7 @@ use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\CustomerController;
 use App\Http\Controllers\Admin\RateCalculatorController;
+use App\Http\Controllers\Admin\RoeSettingsController;
 
 /*
 |--------------------------------------------------------------------------
@@ -55,6 +56,12 @@ Route::middleware(['auth'])->prefix('admin')->group(function () {
 
 
    Route::get('/rate/{id}/report/full', [RateCalculatorController::class, 'rateReportFull'])->name('rate.report.full');
+
+   // ROE Settings
+    Route::get('settings/roe', [RoeSettingsController::class, 'index'])->name('roe.index');
+    Route::post('settings/roe', [RoeSettingsController::class, 'store'])->name('roe.store');
+    Route::delete('settings/roe/{id}', [RoeSettingsController::class, 'destroy'])->name('roe.destroy');
+    Route::get('api/roe/{destination}', [RoeSettingsController::class, 'getByDestination'])->name('roe.api.get');
 
 
 

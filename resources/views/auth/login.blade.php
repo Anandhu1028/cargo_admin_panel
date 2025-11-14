@@ -7,7 +7,7 @@
     <meta content="Admin Login Page" name="description" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
 
-    <link rel="shortcut icon" href="{{ asset('assets/images/favicon.ico') }}">
+    <link rel="shortcut icon" href="{{ asset('assets/images/sidebar_logo.png') }}">
     <link href="{{ asset('assets/css/bootstrap.min.css') }}" rel="stylesheet" />
     <link href="{{ asset('assets/css/icons.min.css') }}" rel="stylesheet" />
     <link href="{{ asset('assets/css/app.min.css') }}" rel="stylesheet" />

@@ -7,6 +7,8 @@ use App\Models\Calculation;
 use App\Models\CalculationDetail;
 use App\Models\DestinationCalculationDetail;
 use App\Models\Customer;
+use App\Models\RateReport;
+use App\Models\RoeSettings;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -321,6 +323,7 @@ public function rateStep2Store(Request $request, $calcId)
                 'rate'           => $rate,
                 'roe'            => $roe,
                 'amount'         => $amount,
+                'customer_name'  => optional($calc->customer)->name,
                 'created_at'     => now(),
                 'updated_at'     => now(),
             ];
@@ -350,8 +353,10 @@ public function rateStep3($calcId)
 {
     $calc = Calculation::with('destinationDetails')->findOrFail($calcId);
 
-    // ✅ Correct AED → INR ROE (editable later)
-    $defaultRoe = 22.80;   // 1 AED = 22.80 INR (set daily or pull from API if you wish)
+    // ✅ Fetch ROE from settings by destination, or use default
+    $destination = strtoupper($calc->port ?? 'KOCHI');
+    $roeSettings = RoeSettings::where('destination', $destination)->first();
+    $defaultRoe = $roeSettings ? $roeSettings->roe_value : 0.0439;  // 1 INR = 0.0439 AED (default)
 
     $rules = [
         'Liner Charges' => [
@@ -393,12 +398,12 @@ public function rateStep3($calcId)
             if ($saved) {
                 $item['unit'] = $saved->unit;
                 $item['qty']  = $saved->qty;
-                $item['rate'] = $saved->rate;   // AED
-                $item['roe']  = $saved->roe;    // ₹ per AED
-                $item['amount'] = $saved->amount; // INR
+                $item['rate'] = $saved->rate;   // INR
+                $item['roe']  = $saved->roe;    // conversion factor (INR to AED)
+                $item['amount'] = $saved->amount; // AED
             } else {
                 $item['qty'] = $cbm ?: 1;
-                $item['amount'] = round($item['rate'] * $item['qty'] * $item['roe'], 2); // AED → INR
+                $item['amount'] = round($item['rate'] * $item['qty'] * $item['roe'], 2); // INR * conversion = AED
             }
         }
     }
@@ -449,6 +454,16 @@ public function rateStep3Store(Request $request, $calcId)
         $calc->destinationDetails()->delete();
         if ($detailsData) DestinationCalculationDetail::insert($detailsData);
         $calc->update(['final_amount' => $total]);
+        // Save a simple report record for quick lookup
+        try {
+            RateReport::create([
+                'calculation_id' => $calc->id,
+                'customer_name'  => $calc->customer_name,
+                'total_amount'   => $total,
+            ]);
+        } catch (\Exception $e) {
+            Log::warning('Failed to create RateReport: ' . $e->getMessage());
+        }
     });
 
     return redirect()->route('rate.report.full', $calc->id)

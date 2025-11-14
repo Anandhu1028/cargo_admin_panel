@@ -164,11 +164,16 @@ return [
             [
                 'particular'   => 'Storage',
                 'unit'         => 'CBM',
-                'qty'          => 0,
+                'qty'          => null,
                 'rate'         => 60.00,
                 'roe'          => 1.0000,
                 'note'         => '₹120/day — enter days manually',
                 'amt_formula'  => 'manual',
+                'manual'       => true,
+            ],
+             [
+                'particular'   => 'Other Charges (If Any)',
+                'amt_formula'  => 'rate * qty * roe',
                 'manual'       => true,
             ],
         ],

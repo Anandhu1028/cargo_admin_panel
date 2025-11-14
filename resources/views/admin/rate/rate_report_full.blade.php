@@ -116,9 +116,9 @@
                 <th class="text-start ps-3" style="width:35%">Particulars</th>
                 <th>Unit</th>
                 <th>Qty</th>
-                <th>Rate (AED)</th>
+                <th>Rate → INR</th>
                 <th>ROE</th>
-                <th class="text-end pe-3">Amount (INR)</th>
+                <th class="text-end pe-3">Amount → AED</th>
               </tr>
             </thead>
             <tbody>
@@ -127,9 +127,9 @@
                 <td class="text-start ps-3">{{ ucfirst($r->particular) }}</td>
                 <td>{{ $r->unit ?? '-' }}</td>
                 <td>{{ number_format($r->qty ?? 0, 2) }}</td>
-                <td>{{ $r->rate !== null ? number_format($r->rate, 2) . ' AED' : '-' }}</td>
+                <td>{{ $r->rate !== null ? number_format($r->rate, 2) . ' INR' : '-' }}</td>
                 <td>{{ number_format($r->roe ?? 1, 4) }}</td>
-                <td class="text-end pe-3 fw-semibold">₹ {{ number_format($r->amount ?? 0, 2) }}</td>
+                <td class="text-end pe-3 fw-semibold">{{ number_format($r->amount ?? 0, 2) }} AED</td>
               </tr>
               @endforeach
               <tr class="table-primary fw-bold">
@@ -150,18 +150,17 @@
       <div class="card-body text-end">
         <h5 class="fw-semibold mb-2">
           Total Origin Charges:
-          <span class="text-dark">₹ {{ number_format($originTotal, 2) }}</span>
+          <span class="text-dark">₹ {{ number_format($originTotal, 2) }} INR</span>
         </h5>
 
         <h5 class="fw-semibold mb-2">
-          Total Destination Charges 
-          <span style="color:#5b6b8d; font-weight:500;">(AED → INR Conversion)</span>:
-          <span class="text-dark">₹ {{ number_format($destTotal, 2) }}</span>
+          Total Destination Charges:
+          <span class="text-dark">{{ number_format($destTotal, 2) }} AED</span>
         </h5>
 
         <hr class="my-2">
 
-        <h3 class="fw-bold text-primary">Grand Total: ₹ {{ number_format($grandTotal, 2) }}</h3>
+        <h3 class="fw-bold text-primary">Grand Total: {{ number_format($grandTotal, 2) }} AED</h3>
       </div>
     </div>
 
