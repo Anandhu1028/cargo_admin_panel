@@ -50,7 +50,14 @@
     @php $originTotal = 0; @endphp
     @foreach ($originGroups as $group => $rows)
       @php
-        $groupTotal = $rows->sum('amount');
+        // Recalculate origin group total as AED: amount = (qty * rate) / roe
+        $groupTotal = 0;
+        foreach ($rows as $rr) {
+          $q = $rr->qty ?? 0;
+          $rt = $rr->rate ?? 0;
+          $r = $rr->roe ?: 1;
+          $groupTotal += ($q * $rt) / $r;
+        }
         $originTotal += $groupTotal;
       @endphp
 
@@ -72,18 +79,24 @@
             </thead>
             <tbody>
               @foreach ($rows as $r)
+              @php
+                $rowQty = $r->qty ?? 0;
+                $rowRate = $r->rate ?? 0;
+                $rowRoe = $r->roe ?: 1;
+                $rowAmount = ($rowQty * $rowRate) / $rowRoe;
+              @endphp
               <tr>
                 <td class="text-start ps-3">{{ ucfirst($r->particular) }}</td>
                 <td>{{ $r->unit ?? '-' }}</td>
                 <td>{{ number_format($r->qty ?? 0, 2) }}</td>
                 <td>{{ $r->rate !== null ? number_format($r->rate, 2) : '-' }}</td>
                 <td>{{ number_format($r->roe ?? 1, 4) }}</td>
-                <td class="text-end pe-3 fw-semibold">₹ {{ number_format($r->amount ?? 0, 2) }}</td>
+                <td class="text-end pe-3 fw-semibold">{{ number_format($rowAmount, 2) }} AED</td>
               </tr>
               @endforeach
               <tr class="table-primary fw-bold">
                 <td colspan="5" class="text-end pe-3">Subtotal ({{ strtoupper(str_replace('_', ' ', $group)) }})</td>
-                <td class="text-end pe-3">₹ {{ number_format($groupTotal, 2) }}</td>
+                <td class="text-end pe-3">{{ number_format($groupTotal, 2) }} AED</td>
               </tr>
             </tbody>
           </table>
@@ -101,7 +114,14 @@
     @php $destTotal = 0; @endphp
     @foreach ($destinationGroups as $group => $rows)
       @php
-        $groupTotal = $rows->sum('amount');
+        // Recalculate group total using formula: amount (AED) = (qty * rate) / roe
+        $groupTotal = 0;
+        foreach ($rows as $rr) {
+          $q = $rr->qty ?? 0;
+          $rt = $rr->rate ?? 0;
+          $r = $rr->roe ?: 1;
+          $groupTotal += ($q * $rt) / $r;
+        }
         $destTotal += $groupTotal;
       @endphp
 
@@ -123,18 +143,24 @@
             </thead>
             <tbody>
               @foreach ($rows as $r)
+              @php
+                $rowQty = $r->qty ?? 0;
+                $rowRate = $r->rate ?? 0;
+                $rowRoe = $r->roe ?: 1;
+                $rowAmount = ($rowQty * $rowRate) / $rowRoe;
+              @endphp
               <tr>
                 <td class="text-start ps-3">{{ ucfirst($r->particular) }}</td>
                 <td>{{ $r->unit ?? '-' }}</td>
                 <td>{{ number_format($r->qty ?? 0, 2) }}</td>
                 <td>{{ $r->rate !== null ? number_format($r->rate, 2) . ' INR' : '-' }}</td>
                 <td>{{ number_format($r->roe ?? 1, 4) }}</td>
-                <td class="text-end pe-3 fw-semibold">{{ number_format($r->amount ?? 0, 2) }} AED</td>
+                <td class="text-end pe-3 fw-semibold">{{ number_format($rowAmount, 2) }} AED</td>
               </tr>
               @endforeach
               <tr class="table-primary fw-bold">
                 <td colspan="5" class="text-end pe-3">Subtotal ({{ strtoupper(str_replace('_', ' ', $group)) }})</td>
-                <td class="text-end pe-3">₹ {{ number_format($groupTotal, 2) }}</td>
+                <td class="text-end pe-3">{{ number_format($groupTotal, 2) }} AED</td>
               </tr>
             </tbody>
           </table>
@@ -150,7 +176,7 @@
       <div class="card-body text-end">
         <h5 class="fw-semibold mb-2">
           Total Origin Charges:
-          <span class="text-dark">₹ {{ number_format($originTotal, 2) }} INR</span>
+          <span class="text-dark"> {{ number_format($originTotal, 2) }} AED</span>
         </h5>
 
         <h5 class="fw-semibold mb-2">
@@ -243,3 +269,4 @@ h5.text-primary {
 }
 </style>
 @endsection
+ 

@@ -40,6 +40,10 @@ Route::middleware(['auth'])->prefix('admin')->group(function () {
     Route::get('rate-calculator', [RateCalculatorController::class, 'index'])->name('rate.index');
     Route::post('rate-calculator', [RateCalculatorController::class, 'calculate'])->name('rate.calculate');
 
+    // Rate Calculation History
+    Route::get('rate-history', [RateCalculatorController::class, 'history'])->name('rate.history');
+    Route::delete('rate-history/{id}', [RateCalculatorController::class, 'deleteReport'])->name('rate.history.delete');
+
     
 
 
@@ -62,6 +66,9 @@ Route::middleware(['auth'])->prefix('admin')->group(function () {
     Route::post('settings/roe', [RoeSettingsController::class, 'store'])->name('roe.store');
     Route::delete('settings/roe/{id}', [RoeSettingsController::class, 'destroy'])->name('roe.destroy');
     Route::get('api/roe/{destination}', [RoeSettingsController::class, 'getByDestination'])->name('roe.api.get');
+
+    Route::post('settings/roe/ocean', [RoeSettingsController::class, 'storeOcean'])->name('roe.ocean.store');
+
 
 
 

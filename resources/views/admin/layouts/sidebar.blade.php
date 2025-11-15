@@ -59,10 +59,19 @@
                     </a>
                 </li>
 
+                
+
                 <li class="nav-item {{ request()->is('admin/settings/roe*') ? 'active' : '' }}">
                     <a class="nav-link {{ request()->is('admin/settings/roe*') ? 'active' : '' }}" href="{{ route('roe.index') }}">
                         <i class="fas fa-cog menu-icon"></i>
                         <span>ROE Settings</span>
+                    </a>
+                </li>
+
+                <li class="nav-item {{ request()->is('admin/rate-history*') ? 'active' : '' }}">
+                    <a class="nav-link {{ request()->is('admin/rate-history*') ? 'active' : '' }}" href="{{ url('admin/rate-history') }}">
+                        <i class="fas fa-history menu-icon"></i>
+                        <span>Rate History</span>
                     </a>
                 </li>
 
@@ -80,6 +89,6 @@
             </div>
         </div>
     </div><!--end startbar-menu-->
-</div><!--end startbar-->
-<div class="startbar-overlay d-print-none"></div>
-<!-- end leftbar-tab-menu -->
+    </div><!--end startbar-->
+    <div class="startbar-overlay d-print-none"></div>
+    <!-- end leftbar-tab-menu -->

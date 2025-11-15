@@ -58,21 +58,34 @@
                                                     <th>Amount</th>
                                                 </tr>
                                             </thead>
+
                                             <tbody class="group-body text-center" data-group="{{ $groupKey }}">
                                                 @foreach ($items as $row)
                                                 @php
                                                 $particular = strtolower($row['particular'] ?? '');
+
                                                 $isLabour = str_contains($particular, 'labour');
                                                 $isOther = str_contains($particular, 'other charges');
                                                 $isSpecial = str_contains($particular, 'special services');
                                                 $isPacking = str_contains($particular, 'packing & materials');
                                                 $isStorage = str_contains($particular, 'storage');
+                                                $isSurrender = str_contains($particular, 'surrender');
 
                                                 $unit = $row['unit'] ?? '-';
                                                 $rate = $row['rate'] ?? 0;
-                                                $roe = $row['roe'] ?? 1;
+
+                                                // ROE Logic
+                                                if ($isOther) {
+                                                $roe = 1;
+                                                } elseif (str_contains($particular, 'ocean freight')) {
+                                                $roe = ($oceanROE > 0) ? $oceanROE : 1;
+                                                } else {
+                                                $roe = ($row['roe'] > 0) ? $row['roe'] : $globalROE;
+                                                }
+
                                                 $qty = $row['qty'] ?? ($calc->cbm ?? 1);
-                                                $amount = $row['amount'] ?? round($rate * $qty * $roe, 2);
+
+                                                $amount = round($qty * $rate * $roe, 2);
                                                 @endphp
 
                                                 {{-- Skip irrelevant collection rows --}}
@@ -81,10 +94,13 @@
                                                     @continue
                                                     @endif
 
-                                                    <tr>
+                                                    <tr class="calc-row" data-roe="{{ $roe }}"
+                                                        data-particular="{{ $particular }}">
+
+                                                        {{-- PARTICULARS --}}
                                                         <td class="text-start ps-3">{{ $row['particular'] }}</td>
 
-                                                        {{-- 🔸 UNIT COLUMN --}}
+                                                        {{-- UNIT --}}
                                                         <td>
                                                             @if ($isPacking)
                                                             CBM
@@ -92,16 +108,17 @@
                                                             @elseif ($isOther)
                                                             <input type="text"
                                                                 name="other_unit[{{ $group }}][{{ $row['particular'] }}]"
-                                                                value="{{ old('other_unit.'. $group .'.'. $row['particular'], $unit !== '-' ? $unit : '') }}"
-                                                                placeholder="Unit"
-                                                                class="form-control form-control-sm short-input text-center other-unit-input"
-                                                                data-roe="{{ $roe }}">
+                                                                value="{{ $unit !== '-' ? $unit : '' }}"
+                                                                placeholder="Enter unit"
+                                                                class="form-control form-control-sm short-input text-center">
+
                                                             @elseif ($isSpecial)
                                                             <input type="text"
                                                                 name="special_desc[{{ $group }}][{{ $row['particular'] }}]"
-                                                                value="{{ old('special_desc.'. $group .'.'. $row['particular'], $row['special_desc'] ?? '') }}"
-                                                                placeholder="unit"
-                                                                class="form-control form-control-sm short-input text-center special-desc">
+                                                                value="{{ $row['special_desc'] ?? '' }}"
+                                                                placeholder="Enter unit"
+                                                                class="form-control form-control-sm short-input text-center">
+
                                                             @else
                                                             {{ $unit }}
                                                             <input type="hidden"
@@ -110,99 +127,95 @@
                                                             @endif
                                                         </td>
 
-                                                        {{-- 🔸 QTY COLUMN --}}
+
+                                                        {{-- QTY --}}
                                                         <td>
                                                             @if ($isLabour)
                                                             <input type="number" step="1" min="0"
                                                                 name="labour_qty[{{ $group }}][{{ $row['particular'] }}]"
-                                                                value="{{ old('labour_qty.'. $group .'.'. $row['particular'], $qty) }}"
-                                                                class="form-control form-control-sm short-input text-end labour-input"
-                                                                data-rate="{{ $rate }}" data-roe="{{ $roe }}">
+                                                                value="{{ $qty }}"
+                                                                class="form-control form-control-sm short-input text-end"
+                                                                data-field="qty">
 
                                                             @elseif ($isOther)
                                                             <input type="number" step="0.01" min="0"
                                                                 name="other_qty[{{ $group }}][{{ $row['particular'] }}]"
-                                                                value="{{ old('other_qty.'. $group .'.'. $row['particular'], $qty) }}" placeholder="Qty"
-                                                                class="form-control form-control-sm short-input text-end other-qty-input"
-                                                                data-roe="{{ $roe }}">
+                                                                value="{{ $qty }}"
+                                                                class="form-control form-control-sm short-input text-end"
+                                                                data-field="qty">
 
                                                             @elseif ($isStorage)
                                                             {{ number_format($calc->cbm, 2) }}
                                                             <input type="hidden"
                                                                 name="storage_qty[{{ $group }}][{{ $row['particular'] }}]"
-                                                                value="{{ $calc->cbm }}">
+                                                                value="{{ $calc->cbm }}" data-field="qty">
 
                                                             @else
                                                             {{ number_format($qty, 2) }}
                                                             <input type="hidden"
                                                                 name="qty[{{ $group }}][{{ $row['particular'] }}]"
-                                                                value="{{ $qty }}">
+                                                                value="{{ $qty }}" data-field="qty">
                                                             @endif
                                                         </td>
 
-
-                                                        {{-- 🔸 RATE COLUMN --}}
+                                                        {{-- RATE --}}
                                                         <td>
                                                             @if ($isOther)
                                                             <input type="number" step="0.01" min="0"
                                                                 name="other_rate[{{ $group }}][{{ $row['particular'] }}]"
-                                                                value="{{ old('other_rate.'. $group .'.'. $row['particular'], $rate) }}" placeholder="Rate"
-                                                                class="form-control form-control-sm short-input text-end other-rate-input"
-                                                                data-roe="{{ $roe }}">
+                                                                value="{{ $rate }}"
+                                                                class="form-control form-control-sm short-input text-end"
+                                                                data-field="rate">
+
                                                             @elseif ($isSpecial)
                                                             <input type="number" step="0.01" min="0"
                                                                 name="special_rate[{{ $group }}][{{ $row['particular'] }}]"
-                                                                value="{{ old('special_rate.'. $group .'.'. $row['particular'], $rate) }}"
-                                                                class="form-control form-control-sm short-input text-end special-rate-input"
-                                                                data-cbm="{{ $calc->cbm }}" data-roe="{{ $roe }}">
+                                                                value="{{ $rate }}"
+                                                                class="form-control form-control-sm short-input text-end"
+                                                                data-field="rate">
+
+                                                            @elseif ($isSurrender)
+                                                            <input type="number" step="0.01" min="0"
+                                                                name="surrender_rate[{{ $group }}][{{ $row['particular'] }}]"
+                                                                value="{{ $rate }}"
+                                                                class="form-control form-control-sm short-input text-end"
+                                                                data-field="rate">
+
                                                             @else
                                                             {{ number_format($rate, 2) }}
                                                             <input type="hidden"
                                                                 name="rate[{{ $group }}][{{ $row['particular'] }}]"
-                                                                value="{{ $rate }}">
+                                                                value="{{ $rate }}" data-field="rate">
                                                             @endif
                                                         </td>
 
-                                                        {{-- 🔸 ROE --}}
+                                                        {{-- ROE --}}
                                                         <td>{{ number_format($roe, 4) }}</td>
 
-                                                        {{-- 🔸 AMOUNT --}}
+                                                        {{-- AMOUNT --}}
                                                         <td class="text-end pe-3">
-                                                            @if ($isLabour)
                                                             <input type="text" readonly
-                                                                class="form-control-plaintext text-end fw-semibold labour-amount"
-                                                                value="{{ number_format($amount, 2) }}">
-                                                            @elseif ($isPacking)
-                                                            <input type="text" readonly
-                                                                class="form-control-plaintext text-end fw-semibold packing-amount-display"
-                                                                value="{{ number_format($amount, 2) }}">
-                                                            @elseif ($isOther)
-                                                            <input type="text" readonly
-                                                                class="form-control-plaintext text-end fw-semibold other-amount-display"
-                                                                value="{{ number_format($amount, 2) }}">
-                                                            @elseif ($isSpecial)
-                                                            <input type="text" readonly
-                                                                class="form-control-plaintext text-end fw-semibold special-amount-display"
-                                                                value="{{ number_format($amount, 2) }}">
-                                                            @else
-                                                            <input type="text" readonly
-                                                                class="form-control-plaintext text-end fw-semibold static-amount"
-                                                                value="{{ number_format($amount, 2) }}">
-                                                            @endif
+                                                                class="form-control-plaintext text-end fw-semibold amount-field"
+                                                                value="{{ number_format($amount, 2) }} AED">
                                                         </td>
+
                                                     </tr>
+
                                                     @endforeach
 
-                                                    {{-- TOTAL ROW --}}
+                                                    {{-- GROUP TOTAL --}}
                                                     <tr class="table-primary fw-bold group-total-row">
                                                         <td colspan="5" class="text-end">
                                                             TOTAL {{ strtoupper(str_replace('_', ' ', $group)) }}
                                                         </td>
-                                                        <td class="text-end pe-3"><span class="group-total">0.00</span>
-                                                        </td>
+                                                        <td class="text-end pe-3"><span class="group-total">0.00
+                                                                AED</span></td>
                                                     </tr>
+
                                             </tbody>
                                         </table>
+
+
                                     </div>
                                 </div>
                             </div>
@@ -261,62 +274,160 @@
     }
 </style>
 @endsection
-
 @push('scripts')
 <script>
+
+    document.addEventListener("DOMContentLoaded", function () {
+        recalcTotals(); // calculate totals instantly on page load
+    });
+
+    // When user types qty or rate → recalc that row + totals
+    document.addEventListener("input", function (e) {
+        const input = e.target;
+
+        if (!input.dataset.field) {
+            recalcTotals();
+            return;
+        }
+
+        const row = input.closest(".calc-row");
+        if (!row) return;
+
+        const qty = parseFloat(row.querySelector('[data-field="qty"]')?.value) || 0;
+        const rate = parseFloat(row.querySelector('[data-field="rate"]')?.value) || 0;
+        let roe = parseFloat(row.dataset.roe) || 1;
+
+        if (roe <= 0) roe = 1;
+
+        const amount = qty * rate * roe;
+
+        row.querySelector(".amount-field").value =
+            amount.toLocaleString("en-IN", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            }) + " AED";
+
+        recalcTotals();
+    });
+
+
+    // GLOBAL TOTAL CALCULATION (always run)
+    function recalcTotals() {
+        document.querySelectorAll(".group-body").forEach(group => {
+            let total = 0;
+
+            group.querySelectorAll(".amount-field").forEach(a => {
+                const num = parseFloat(a.value.replace(/[^0-9.]/g, "")) || 0;
+                total += num;
+            });
+
+            const el = group.querySelector(".group-total");
+            if (el) {
+                el.textContent =
+                    total.toLocaleString("en-IN", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2
+                    }) + " AED";
+            }
+        });
+    }
+
+
+
 
     document.querySelectorAll('.storage-rate-input').forEach(inp => {
         inp.addEventListener('input', function () {
             const row = this.closest('tr');
-            const qty = toNumber(row.querySelector('input[name*="storage_qty"]')?.value || 0);
-            const rate = toNumber(this.value);
-            const roe = toNumber(this.dataset.roe || 1);
+            const qty = parseFloat(row.querySelector('input[name*="storage_qty"]')?.value) || 0;
+            const rate = parseFloat(this.value) || 0;
+            const roe = parseFloat(this.dataset.roe) || 1;
+
+            const amount = qty * rate * roe;
 
             row.querySelector('.storage-amount-display').value =
-                formatNumber(qty * rate * roe);
+                amount.toLocaleString("en-IN", { minimumFractionDigits: 2 }) + ' AED';
 
             updateAllGroupTotals();
         });
     });
 
     document.addEventListener("DOMContentLoaded", function () {
-        const formatNumber = n => Number(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+        const formatNumber = n => Number(n || 0).toLocaleString("en-IN", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        });
+
         const toNumber = s => parseFloat((s || "0").replace(/[^0-9.\-]/g, "")) || 0;
 
-        const updateAllGroupTotals = () => {
+        window.updateAllGroupTotals = () => {
             document.querySelectorAll('.group-body').forEach(g => {
                 let total = 0;
-                g.querySelectorAll('.static-amount, .labour-amount, .packing-amount-display, .other-amount-display, .special-amount-display')
+                g.querySelectorAll('.static-amount, .labour-amount, .packing-amount-display, .other-amount-display, .special-amount-display, .storage-amount-display, .surrender-amount-display')
                     .forEach(el => total += toNumber(el.value || el.textContent));
                 const totalEl = g.querySelector('.group-total');
-                if (totalEl) totalEl.textContent = formatNumber(total);
+                if (totalEl) totalEl.textContent = formatNumber(total) + ' AED';
             });
         };
 
-        updateAllGroupTotals();
+        // Initialize storage amounts
+        document.querySelectorAll('.storage-amount-display').forEach(el => {
+            const row = el.closest('tr');
+            const qty = toNumber(row.querySelector('input[name*="storage_qty"]')?.value
+                || row.querySelector('input[name*="qty"]')?.value);
+            const rate = toNumber(row.querySelector('input[type="hidden"][name*="rate"]')?.value);
+            const roe = toNumber(row.querySelector('input[type="hidden"][name*="rate"]')?.dataset.roe);
 
+            el.value = formatNumber(qty * rate * roe) + ' AED';
+        });
+
+        // LABOUR
         document.querySelectorAll('.labour-input').forEach(inp => inp.addEventListener('input', function () {
-            const rate = toNumber(this.dataset.rate), roe = toNumber(this.dataset.roe), qty = toNumber(this.value);
-            this.closest('tr').querySelector('.labour-amount').value = formatNumber(rate * qty * roe);
+            const rate = toNumber(this.dataset.rate);
+            const roe = toNumber(this.dataset.roe);
+            const qty = toNumber(this.value);
+
+            const amount = rate * qty * roe;
+
+            this.closest('tr').querySelector('.labour-amount').value =
+                formatNumber(amount) + ' AED';
+
             updateAllGroupTotals();
         }));
 
+        // OTHER CHARGES
         document.querySelectorAll('.other-qty-input, .other-rate-input').forEach(inp => {
             inp.addEventListener('input', function () {
                 const row = this.closest('tr');
-                const qty = toNumber(row.querySelector('.other-qty-input')?.value || 0);
-                const rate = toNumber(row.querySelector('.other-rate-input')?.value || 0);
-                const roe = toNumber(row.querySelector('.other-rate-input')?.dataset.roe || 1);
-                row.querySelector('.other-amount-display').value = formatNumber(qty * rate * roe);
+                const qty = toNumber(row.querySelector('.other-qty-input')?.value);
+                const rate = toNumber(row.querySelector('.other-rate-input')?.value);
+                const roe = toNumber(row.querySelector('.other-rate-input')?.dataset.roe);
+
+                const amount = qty * rate * roe;
+
+                row.querySelector('.other-amount-display').value =
+                    formatNumber(amount) + ' AED';
+
                 updateAllGroupTotals();
             });
         });
 
-        document.querySelectorAll('.special-rate-input').forEach(inp => inp.addEventListener('input', function () {
-            const cbm = toNumber(this.dataset.cbm), roe = toNumber(this.dataset.roe), rate = toNumber(this.value);
-            this.closest('tr').querySelector('.special-amount-display').value = formatNumber(cbm * rate * roe);
-            updateAllGroupTotals();
-        }));
+        // SPECIAL SERVICES
+        document.querySelectorAll('.special-rate-input').forEach(inp => {
+            inp.addEventListener('input', function () {
+                const cbm = toNumber(this.dataset.cbm);
+                const roe = toNumber(this.dataset.roe);
+                const rate = toNumber(this.value);
+
+                const amount = cbm * rate * roe;
+
+                this.closest('tr').querySelector('.special-amount-display').value =
+                    formatNumber(amount) + ' AED';
+
+                updateAllGroupTotals();
+            });
+        });
+
     });
 </script>
 @endpush

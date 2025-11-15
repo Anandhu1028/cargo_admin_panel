@@ -76,7 +76,7 @@
                         || str_contains($particular, 'fitting') || str_contains($particular, 'fixing');
 
                         $qty = $isCBMBased ? $cbm : 1;
-                        $amount = round($rate * $qty * $roe, 2);
+                        $amount = round(($qty * $rate) / ($roe ?: 1), 2);
                         @endphp
 
                         <tr>
@@ -382,7 +382,8 @@
 
       const qty = num(row.querySelector('input[name*="[qty]"]')?.value || 1);
       const rate = num(row.querySelector(".rate-input")?.value || row.querySelector('input[name*="[rate]"]')?.value || 0);
-      const amount = qty * rate * roe;  // INR * ROE = AED
+      // amount in AED = (qty * rate in INR) / roe (INR per AED)
+      const amount = (qty * rate) / (roe || 1);
 
       // ✅ Label only the Rate column with INR
       const rateCell = row.children[3]; // the 4th column = Rate
@@ -422,3 +423,4 @@
   });
 </script>
 @endpush
+ 

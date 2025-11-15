@@ -78,4 +78,25 @@ class RoeSettingsController extends Controller
 
         return response()->json(['roe_value' => $roe->roe_value]);
     }
+
+
+    public function storeOcean(Request $request)
+{
+    $request->validate([
+        'ocean_freight_roe' => 'required|numeric|min:0.00001|max:100'
+    ]);
+
+    $roe = RoeSettings::where('destination', 'DESTINATION')->first();
+
+    if (! $roe) {
+        $roe = new RoeSettings();
+        $roe->destination = 'DESTINATION';
+    }
+
+    $roe->ocean_freight_roe = $request->ocean_freight_roe;
+    $roe->save();
+
+    return back()->with('success', 'Ocean Freight ROE updated!');
+}
+
 }
