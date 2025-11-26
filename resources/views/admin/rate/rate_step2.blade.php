@@ -34,7 +34,7 @@
                     <form method="POST" action="{{ route('rate.step2.store', $calc->id) }}">
                         @csrf
 
-                        <div id="deleted_rows"></div> 
+                        <div id="deleted_rows"></div>
 
                         @foreach ($rules as $group => $items)
                         @php $groupKey = strtolower($group); @endphp
@@ -76,230 +76,226 @@
                                                 </tr>
                                             </thead>
 
-                                        <tbody class="group-body text-center" data-group="{{ $groupKey }}">
+                                            <tbody class="group-body text-center" data-group="{{ $groupKey }}">
 
-    @foreach ($items as $row)
-    @php
-        $particular = strtolower($row['particular'] ?? '');
+@foreach ($items as $row)
+@php
+    $particular = strtolower($row['particular'] ?? '');
 
-        $isLabour    = str_contains($particular, 'labour');
-        $isOther     = str_contains($particular, 'other charges');
-        $isSpecial   = str_contains($particular, 'special services');
-        $isPacking   = str_contains($particular, 'packing & materials');
-        $isStorage   = str_contains($particular, 'storage');
-        $isSurrender = str_contains($particular, 'surrender');
+    $isLabour    = str_contains($particular, 'labour');
+    $isOther     = str_contains($particular, 'other charges');
+    $isSpecial   = str_contains($particular, 'special services');
+    $isPacking   = str_contains($particular, 'packing & materials');
+    $isStorage   = str_contains($particular, 'storage');
+    $isSurrender = str_contains($particular, 'surrender');
 
-        $unit = $row['unit'] ?? '-';
-        $rate = $row['rate'] ?? 0;
+    $unit = $row['unit'] ?? '-';
+    $rate = $row['rate'] ?? 0;
 
-        // ROE logic
-        if ($isOther) {
-            $roe = 1;
-        } elseif (str_contains($particular, 'ocean freight')) {
-            $roe = ($oceanROE > 0) ? $oceanROE : 1;
-        } else {
-            $roe = ($row['roe'] > 0) ? $row['roe'] : $globalROE;
-        }
+    if ($isOther) {
+        $roe = 1;
+    } elseif (str_contains($particular, 'ocean freight')) {
+        $roe = ($oceanROE > 0) ? $oceanROE : 1;
+    } else {
+        $roe = ($row['roe'] > 0) ? $row['roe'] : $globalROE;
+    }
 
-        $qty    = $row['qty'] ?? ($calc->cbm ?? 1);
-        $amount = round($qty * $rate * $roe, 2);
-    @endphp
+    $qty    = $row['qty'] ?? ($calc->cbm ?? 1);
+    $amount = round($qty * $rate * $roe, 2);
+@endphp
 
-    {{-- Skip auto-omitted vehicle rows --}}
-    @if (($calc->cbm <= 3 && str_contains($particular, '3 tone')) ||
-         ($calc->cbm > 3  && str_contains($particular, 'van up to 3')))
-        @continue
-    @endif
-
-    <tr class="calc-row"
-        data-id="{{ $row['id'] ?? '' }}"
-        data-custom="{{ $row['is_custom'] ?? 0 }}"
-        data-roe="{{ $roe }}"
-        data-particular="{{ $particular }}">
-
-
-
-
-        {{-- PARTICULAR --}}    
-        <td class="text-start ps-3">{{ $row['particular'] }}</td>
-
-        {{-- UNIT --}}
-        <td>
-            @if ($isPacking)
-                CBM
-            @elseif ($isOther)
-                <input type="text"
-                       name="other_unit[{{ $group }}][{{ $row['particular'] }}]"
-                       value="{{ $unit !== '-' ? $unit : '' }}"
-                       class="form-control form-control-sm short-input text-center">
-            @elseif ($isSpecial)
-                <input type="text"
-                       name="special_desc[{{ $group }}][{{ $row['particular'] }}]"
-                       value="{{ $row['special_desc'] ?? '' }}"
-                       class="form-control form-control-sm short-input text-center">
-            @else
-                {{ $unit }}
-                <input type="hidden"
-                       name="unit[{{ $group }}][{{ $row['particular'] }}]"
-                       value="{{ $unit }}">
-            @endif
-        </td>
-
-        {{-- QTY --}}
-        <td>
-            @if ($isLabour)
-                <input type="number" step="1" min="0"
-                       name="labour_qty[{{ $group }}][{{ $row['particular'] }}]"
-                       value="{{ $qty }}"
-                       class="form-control form-control-sm short-input text-end"
-                       data-field="qty">
-            @elseif ($isOther)
-                <input type="number" step="0.01" min="0"
-                       name="other_qty[{{ $group }}][{{ $row['particular'] }}]"
-                       value="{{ $qty }}"
-                       class="form-control form-control-sm short-input text-end"
-                       data-field="qty">
-            @elseif ($isStorage)
-                {{ number_format($calc->cbm, 2) }}
-                <input type="hidden"
-                       name="storage_qty[{{ $group }}][{{ $row['particular'] }}]"
-                       value="{{ $calc->cbm }}"
-                       data-field="qty">
-            @else
-                {{ number_format($qty, 2) }}
-                <input type="hidden"
-                       name="qty[{{ $group }}][{{ $row['particular'] }}]"
-                       value="{{ $qty }}"
-                       data-field="qty">
-            @endif
-        </td>
-
-        {{-- RATE --}}
-        <td>
-            @if ($isOther)
-                <input type="number" step="0.01" min="0"
-                       name="other_rate[{{ $group }}][{{ $row['particular'] }}]"
-                       value="{{ $rate }}"
-                       class="form-control form-control-sm short-input text-end"
-                       data-field="rate">
-            @elseif ($isSpecial)
-                <input type="number" step="0.01" min="0"
-                       name="special_rate[{{ $group }}][{{ $row['particular'] }}]"
-                       value="{{ $rate }}"
-                       class="form-control form-control-sm short-input text-end"
-                       data-field="rate">
-            @elseif ($isSurrender)
-                <input type="number" step="0.01" min="0"
-                       name="surrender_rate[{{ $group }}][{{ $row['particular'] }}]"
-                       value="{{ $rate }}"
-                       class="form-control form-control-sm short-input text-end"
-                       data-field="rate">
-            @else
-                {{ number_format($rate, 2) }}
-                <input type="hidden"
-                       name="rate[{{ $group }}][{{ $row['particular'] }}]"
-                       value="{{ $rate }}"
-                       data-field="rate">
-            @endif
-        </td>
-
-        {{-- ROE --}}
-        <td>{{ number_format($roe, 4) }}</td>
-
-        {{-- AMOUNT --}}
-        <td class="text-end pe-3">
-            <input type="text" readonly
-                   class="form-control-plaintext text-end fw-semibold amount-field"
-                   value="{{ number_format($amount, 2) }} AED">
-        </td>
-
-        {{-- TOTAL CHARGE + DELETE --}}
-        <td class="text-end pe-3">
-            <input type="text" readonly
-                   class="form-control-plaintext text-end fw-semibold total-charge-field"
-                   value="{{ number_format(($amount * $calc->cbm) / 50, 2) }} AED">
-
-           @if(!empty($row['is_custom']) && $row['is_custom'] == 1)
-    <i class="fa-regular fa-trash-can remove-row-btn"
-       style="color:#d00000; cursor:pointer; font-size:16px; margin-left:8px;"></i>
+@if (($calc->cbm <= 3 && str_contains($particular, '3 tone')) ||
+    ($calc->cbm > 3  && str_contains($particular, 'van up to 3')))
+    @continue
 @endif
 
-        </td>
+<tr class="calc-row"
+    data-id="{{ $row['id'] }}"
+    data-custom="{{ $row['is_custom'] }}"
+    data-roe="{{ $roe }}"
+    data-particular="{{ $particular }}">
 
-    </tr>
-    @endforeach
+    <td class="text-start ps-3">{{ $row['particular'] }}</td>
 
+    <td>
+        @if ($isPacking)
+            CBM
+        @elseif ($isOther)
+            <input type="text"
+                name="other_unit[{{ $group }}][{{ $row['particular'] }}]"
+                value="{{ $unit !== '-' ? $unit : '' }}"
+                class="form-control form-control-sm short-input text-center">
+        @elseif ($isSpecial)
+            <input type="text"
+                name="special_desc[{{ $group }}][{{ $row['particular'] }}]"
+                value="{{ $row['special_desc'] ?? '' }}"
+                class="form-control form-control-sm short-input text-center">
+        @else
+            {{ $unit }}
+            <input type="hidden"
+                name="unit[{{ $group }}][{{ $row['particular'] }}]"
+                value="{{ $unit }}">
+        @endif
+    </td>
 
-    {{-- NEW ROW TEMPLATE --}}
-    <tr class="new-row-template d-none">
-
-        <td>
-            <input type="text" name="new_particular[{{ $group }}][]"
-                   class="form-control form-control-sm text-start"
-                   placeholder="Particular">
-        </td>
-
-        <td>
-            <input type="text" name="new_unit[{{ $group }}][]"
-                   class="form-control form-control-sm text-center short-input"
-                   placeholder="Unit">
-        </td>
-
-        <td>
+    <td>
+        @if ($isLabour)
+            <input type="number" step="1" min="0"
+                name="labour_qty[{{ $group }}][{{ $row['particular'] }}]"
+                value="{{ $qty }}"
+                class="form-control form-control-sm short-input text-end"
+                data-field="qty">
+        @elseif ($isOther)
             <input type="number" step="0.01" min="0"
-                   name="new_qty[{{ $group }}][]"
-                   class="form-control form-control-sm text-end short-input"
-                   placeholder="Qty"
-                   data-field="qty">
-        </td>
+                name="other_qty[{{ $group }}][{{ $row['particular'] }}]"
+                value="{{ $qty }}"
+                class="form-control form-control-sm short-input text-end"
+                data-field="qty">
+        @elseif ($isStorage)
+            {{ number_format($calc->cbm, 2) }}
+            <input type="hidden"
+                name="storage_qty[{{ $group }}][{{ $row['particular'] }}]"
+                value="{{ $calc->cbm }}"
+                data-field="qty">
+        @else
+            {{ number_format($qty, 2) }}
+            <input type="hidden"
+                name="qty[{{ $group }}][{{ $row['particular'] }}]"
+                value="{{ $qty }}"
+                data-field="qty">
+        @endif
+    </td>
 
-        <td>
+    <td>
+        @if ($isOther)
             <input type="number" step="0.01" min="0"
-                   name="new_rate[{{ $group }}][]"
-                   class="form-control form-control-sm text-end short-input"
-                   placeholder="Rate"
-                   data-field="rate">
-        </td>
+                name="other_rate[{{ $group }}][{{ $row['particular'] }}]"
+                value="{{ $rate }}"
+                class="form-control form-control-sm short-input text-end"
+                data-field="rate">
+        @elseif ($isSpecial)
+            <input type="number" step="0.01" min="0"
+                name="special_rate[{{ $group }}][{{ $row['particular'] }}]"
+                value="{{ $rate }}"
+                class="form-control form-control-sm short-input text-end"
+                data-field="rate">
+        @elseif ($isSurrender)
+            <input type="number" step="0.01" min="0"
+                name="surrender_rate[{{ $group }}][{{ $row['particular'] }}]"
+                value="{{ $rate }}"
+                class="form-control form-control-sm short-input text-end"
+                data-field="rate">
+        @else
+            {{ number_format($rate, 2) }}
+            <input type="hidden"
+                name="rate[{{ $group }}][{{ $row['particular'] }}]"
+                value="{{ $rate }}"
+                data-field="rate">
+        @endif
+    </td>
 
-        <td>
-            <input type="number" step="0.0001" min="0"
-                   name="new_roe[{{ $group }}][]"
-                   class="form-control form-control-sm text-end short-input"
-                   data-field="roe"
-                   value="1">
-        </td>
+    <td>{{ number_format($roe, 4) }}</td>
 
-        <td class="text-end">
-            <input type="text" readonly
-                   class="form-control-plaintext text-end fw-semibold amount-field"
-                   value="0.00 AED">
-        </td>
+    <td class="text-end pe-3">
+        <input type="text" readonly
+            class="form-control-plaintext text-end fw-semibold amount-field"
+            value="{{ number_format($amount, 2) }} AED">
+    </td>
 
-        <td class="text-end">
-            <input type="text" readonly
-                   class="form-control-plaintext text-end fw-semibold total-charge-field"
-                   value="0.00 AED">
+    <td class="text-end pe-3">
+        <input type="text" readonly
+            class="form-control-plaintext text-end fw-semibold total-charge-field"
+            value="{{ number_format(($amount * $calc->cbm) / 50, 2) }} AED">
 
-           <i class="fa-regular fa-trash-can remove-row-btn"
-   data-id="{{ $row['id'] ?? '' }}"
-   data-custom="{{ $row['is_custom'] ?? 0 }}"
-   style="color:#d00000; cursor:pointer; font-size:16px; margin-left:8px;"></i>
+       @if($row['is_custom'] == 1)
+    <button type="button"
+            class="delete-row-btn"
+            data-id="{{ $row['id'] }}"
+            style="border:none;background:none;padding:0;">
+        <i class="fa-regular fa-trash-can"
+           style="color:#d00000;cursor:pointer;font-size:16px;"></i>
+    </button>
+@endif
 
 
-        </td>
-    </tr>
 
-    {{-- TOTAL ROW --}}
-    <tr class="table-primary group-total-row">
-        <td colspan="6" class="text-end fw-bold">
-            TOTAL {{ strtoupper(str_replace('_', ' ', $group)) }}
-        </td>
-        <td class="text-end pe-3 fw-bold">
-            <span class="group-total">0.00 AED</span>
-        </td>
-    </tr>
+    </td>
+
+</tr>
+@endforeach
+
+
+{{-- NEW ROW TEMPLATE --}}
+<tr class="new-row-template d-none calc-row" data-id="" data-custom="1">
+
+    <td>
+        <input type="text" name="new_particular[{{ $group }}][]"
+            class="form-control form-control-sm text-start"
+            placeholder="Particular">
+    </td>
+
+    <td>
+        <input type="text" name="new_unit[{{ $group }}][]"
+            class="form-control form-control-sm text-center short-input"
+            placeholder="Unit">
+    </td>
+
+    <td>
+        <input type="number" step="0.01" min="0"
+            name="new_qty[{{ $group }}][]"
+            class="form-control form-control-sm text-end short-input"
+            placeholder="Qty" data-field="qty">
+    </td>
+
+    <td>
+        <input type="number" step="0.01" min="0"
+            name="new_rate[{{ $group }}][]"
+            class="form-control form-control-sm text-end short-input"
+            placeholder="Rate" data-field="rate">
+    </td>
+
+    <td>
+        <input type="number" step="0.0001" min="0"
+            name="new_roe[{{ $group }}][]"
+            class="form-control form-control-sm text-end short-input"
+            data-field="roe" value="1">
+    </td>
+
+    <td class="text-end">
+        <input type="text" readonly
+            class="form-control-plaintext text-end fw-semibold amount-field"
+            value="0.00 AED">
+    </td>
+
+    <td class="text-end">
+        <input type="text" readonly
+            class="form-control-plaintext text-end fw-semibold total-charge-field"
+            value="0.00 AED">
+
+        {{-- Not in DB yet — only remove from DOM via JS or form if you want --}}
+        <button type="button"
+            class="btn p-0 remove-new-row"
+            style="background:none; border:none;">
+            <i class="fa-regular fa-trash-can"
+               style="color:#d00000; font-size:16px; margin-left:8px;"></i>
+        </button>
+    </td>
+
+</tr>
+
+
+<tr class="table-primary group-total-row">
+    <td colspan="6" class="text-end fw-bold">
+        TOTAL {{ strtoupper(str_replace('_', ' ', $group)) }}
+    </td>
+    <td class="text-end pe-3 fw-bold">
+        <span class="group-total">0.00 AED</span>
+    </td>
+</tr>
 
 </tbody>
+
+
 
 
                                         </table>
@@ -333,6 +329,10 @@
         </div>
     </div>
 </div>
+<form id="deleteRowForm" method="POST" style="display:none;">
+    @csrf
+    @method('DELETE')
+</form>
 
 <style>
     .table td,
@@ -367,39 +367,17 @@
 @push('scripts')
 <script>
 
+document.querySelectorAll('.delete-row-btn').forEach(btn => {
+    btn.addEventListener('click', function () {
+        const id = this.dataset.id;
 
-document.addEventListener("click", function (e) {
-    const btn = e.target.closest(".remove-row-btn");
-    if (!btn) return;
-
-    const id  = btn.dataset.id;
-    const isCustom = btn.dataset.custom == "1";
-    const row = btn.closest("tr");
-
-    if (id && isCustom) {
-        fetch(`/rate/step2/delete/${id}`, {
-            method: "DELETE",
-            headers: {
-                "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content,
-                "Accept": "application/json"
-            }
-        })
-        .then(r => r.json())
-        .then(res => {
-            if (res.success) {
-                row.remove();
-                recalcTotals();
-            }
-        });
-        return;
-    }
-
-    // NEW UNSAVED ROW
-    if (!id) {
-        row.remove();
-        recalcTotals();
-    }
+        const form = document.getElementById('deleteRowForm');
+        form.action = `/admin/rate-calculator/step2/delete-row/${id}`;
+        form.submit();
+    });
 });
+
+    
 
 
 

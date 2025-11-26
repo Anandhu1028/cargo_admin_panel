@@ -173,9 +173,15 @@
 
                 {{-- NEW — SHOW DELETE ICON FOR CUSTOM ROWS --}}
                 @if($isCustom == 1)
-                    <i class="fa-regular fa-trash-can remove-row-btn"
-                       style="color:#d00000; cursor:pointer; font-size:16px; margin-left:8px;"></i>
-                @endif
+<button type="button"
+        class="delete-row-btn"
+        data-id="{{ $row['id'] }}"
+        style="border:none;background:none;padding:0;">
+    <i class="fa-regular fa-trash-can"
+       style="color:#d00000; cursor:pointer; font-size:16px; margin-left:8px;"></i>
+</button>
+@endif
+
             </td>
         </tr>
 
@@ -309,6 +315,10 @@
     </div>
   </div>
 </div>
+<form id="deleteRowFormStep3" method="POST" style="display:none;">
+    @csrf
+    @method('DELETE')
+</form>
 
 <style>
   .table td,
@@ -415,6 +425,7 @@
 
 @push('scripts')
 <script>
+  
 document.addEventListener("DOMContentLoaded", function () {
 
     // ADD ROW

@@ -298,10 +298,6 @@ public function rateStep2($calcId)
     ]);
 }
 
-
-
-
-
 /**
  * rateStep2Store - Clear & Reinsert strategy
  *
@@ -312,121 +308,118 @@ public function rateStep2Store(Request $request, $calcId)
 {
     $calc = Calculation::findOrFail($calcId);
 
-    $deletedIds = $request->input('delete_ids', []);
+    //  FIX: CLEAR ALL PREVIOUS DATA
+    CalculationDetail::where('calculation_id', $calcId)->delete();
 
     $cbm = (float)$calc->cbm;
     $totalVolume = 50;
 
     $detailsData = [];
-
-    $savedRows = $calc->details->keyBy(function ($d) {
-        return strtolower(trim($d->group_name)) . '|' . strtolower(trim($d->particular));
-    });
-
     $rules = config('rate_rules.origin');
 
-    foreach ($rules as $group => $items) {
-        foreach ($items as $item) {
+   foreach ($rules as $group => $items) {
+    foreach ($items as $item) {
 
-            $p = $item['particular'];
-            $key = strtolower(trim($group)) . '|' . strtolower(trim($p));
+        $p = $item['particular'];
+        $particularLower = strtolower($p);
 
-            // DO NOT RECREATE DELETED CUSTOM ROWS
-            if ($savedRows->has($key)) {
-                $rid = $savedRows[$key]->id;
-                if (in_array($rid, $deletedIds)) {
-                    continue;
-                }
-            }
+        //  IMPORTANT: skip rules SAME AS step2()
+        if (str_contains($particularLower, 'van up to 3') && $cbm > 3) {
+            continue;
+        }
 
-            // Extract user input
-            $qty  = $request->input("qty.$group.$p") 
-                    ?? $request->input("labour_qty.$group.$p")
-                    ?? $request->input("other_qty.$group.$p")
-                    ?? $request->input("storage_qty.$group.$p")
-                    ?? ($item['qty'] ?? 1);
+        if (str_contains($particularLower, '3 tone') && $cbm <= 3) {
+            continue;
+        }
 
-            $rate = $request->input("rate.$group.$p") 
-                    ?? $request->input("other_rate.$group.$p")
-                    ?? $request->input("special_rate.$group.$p")
-                    ?? $request->input("surrender_rate.$group.$p")
-                    ?? ($item['rate'] ?? 0);
+        // Extract saved values or default rule values
+        $qty  = $request->input("qty.$group.$p")  ?? ($item['qty']  ?? 1);
+        $rate = $request->input("rate.$group.$p") ?? ($item['rate'] ?? 0);
+        $roe  = $request->input("roe.$group.$p")  ?? ($item['roe']  ?? 1);
 
-            $roe  = $request->input("roe.$group.$p") 
-                    ?? ($item['roe'] ?? 1);
+        if ($roe <= 0) $roe = 1;
 
-            if ($roe <= 0) $roe = 1;
+        // Amount & total charge
+        $amount = round($qty * $rate * $roe, 2);
+        $total  = round(($amount * $cbm) / $totalVolume, 2);
+
+        // Add row to insert list
+        $detailsData[] = [
+            'calculation_id' => $calcId,
+            'group_name'     => $group,
+            'particular'     => $p,
+            'unit'           => $item['unit'] ?? '-',
+            'qty'            => $qty,
+            'rate'           => $rate,
+            'roe'            => $roe,
+            'amount'         => $amount,
+            'total_charge'   => $total,
+            'is_custom'      => 0,
+            'customer_name'  => $calc->customer_name,
+            'created_at'     => now(),
+            'updated_at'     => now(),
+        ];
+    }
+
+    //  CUSTOM ROWS
+    if ($request->has("new_particular.$group")) {
+
+        foreach ($request->input("new_particular.$group") as $i => $pname) {
+
+            if (!trim($pname)) continue;
+
+            $qty  = (float) $request->input("new_qty.$group.$i");
+            $rate = (float) $request->input("new_rate.$group.$i");
+            $roe  = (float) $request->input("new_roe.$group.$i") ?: 1;
 
             $amount = round($qty * $rate * $roe, 2);
             $total  = round(($amount * $cbm) / $totalVolume, 2);
 
-            $isCustom = $savedRows->has($key) 
-                        ? $savedRows[$key]->is_custom 
-                        : 0;
-
             $detailsData[] = [
                 'calculation_id' => $calcId,
                 'group_name'     => $group,
-                'particular'     => $p,
-                'unit'           => $item['unit'] ?? '-',
+                'particular'     => $pname,
+                'unit'           => $request->input("new_unit.$group.$i") ?? '-',
                 'qty'            => $qty,
                 'rate'           => $rate,
                 'roe'            => $roe,
                 'amount'         => $amount,
                 'total_charge'   => $total,
-                'is_custom'      => $isCustom,
+                'is_custom'      => 1,
+                'customer_name'  => $calc->customer_name,
                 'created_at'     => now(),
                 'updated_at'     => now(),
             ];
         }
-
-        // NEW CUSTOM ROWS
-        if ($request->has("new_particular.$group")) {
-            $parts = $request->input("new_particular.$group");
-
-            foreach ($parts as $i => $pname) {
-
-                if (!trim($pname)) continue;
-
-                $qty  = (float) $request->input("new_qty.$group.$i");
-                $rate = (float) $request->input("new_rate.$group.$i");
-                $roe  = (float) $request->input("new_roe.$group.$i") ?: 1;
-
-                $amount = round($qty * $rate * $roe, 2);
-                $total  = round(($amount * $cbm) / $totalVolume, 2);
-
-                $detailsData[] = [
-                    'calculation_id' => $calcId,
-                    'group_name'     => $group,
-                    'particular'     => $pname,
-                    'unit'           => $request->input("new_unit.$group.$i") ?? '-',
-                    'qty'            => $qty,
-                    'rate'           => $rate,
-                    'roe'            => $roe,
-                    'amount'         => $amount,
-                    'total_charge'   => $total,
-                    'is_custom'      => 1,
-                    'created_at'     => now(),
-                    'updated_at'     => now(),
-                ];
-            }
-        }
     }
+}
 
-    DB::transaction(function () use ($calc, $detailsData, $deletedIds) {
 
-        if (!empty($deletedIds)) {
-            CalculationDetail::whereIn('id', $deletedIds)->delete();
-        }
-
-        CalculationDetail::insert($detailsData);
-    });
+    CalculationDetail::insert($detailsData);
 
     return redirect()->route('rate.step3', $calcId);
 }
 
+public function deleteRow($id)
+{
+    CalculationDetail::where('id', $id)->delete();
+    return back();
+}
 
+// public function deleteStep3Row($id)
+// {
+//     $row = DestinationCalculationDetail::find($id);
 
+//     if (!$row) {
+//         return back();
+//     }
+
+//     if ($row->is_custom == 1) {
+//         $row->delete();
+//     }
+
+//     return back();
+// }
 
 
 
@@ -526,16 +519,17 @@ public function rateStep3($calcId)
 
         // If not in default → append it
         if (!$exists) {
-            $rules[$group][] = [
+           $rules[$group][] = [
+                'id'         => $row->id,
                 'particular' => $row->particular,
                 'unit'       => $row->unit,
                 'qty'        => $row->qty,
                 'rate'       => $row->rate,
                 'roe'        => $row->roe,
                 'amount'     => $row->amount,
-                'is_custom' => $row->is_custom,
-
+                'is_custom'  => $row->is_custom,
             ];
+
         }
     }
 
@@ -804,14 +798,16 @@ public function rateReportFull($id)
         ]
     ];
 
-    // ========= SAVE TO DB =========
-    RateReport::create([
-        'calculation_id' => $calc->id,
+    // ========= SAVE TO DB (REPLACE IF EXISTS) =========
+RateReport::updateOrCreate(
+    ['calculation_id' => $calc->id], // identify existing row
+    [
         'customer_name'  => $calc->customer_name,
         'total_amount'   => $grandTotal,
         'total_charges'  => $grandTotal,
         'report_data'    => json_encode($json)
-    ]);
+    ]
+);
 
     // For frontend display
     return view('admin.rate.rate_report_full', compact(
