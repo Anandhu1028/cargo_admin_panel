@@ -280,8 +280,11 @@
                    class="form-control-plaintext text-end fw-semibold total-charge-field"
                    value="0.00 AED">
 
-            <i class="fa-regular fa-trash-can remove-row-btn"
+           <i class="fa-regular fa-trash-can remove-row-btn"
+   data-id="{{ $row['id'] ?? '' }}"
+   data-custom="{{ $row['is_custom'] ?? 0 }}"
    style="color:#d00000; cursor:pointer; font-size:16px; margin-left:8px;"></i>
+
 
         </td>
     </tr>
@@ -369,11 +372,10 @@ document.addEventListener("click", function (e) {
     const btn = e.target.closest(".remove-row-btn");
     if (!btn) return;
 
+    const id  = btn.dataset.id;
+    const isCustom = btn.dataset.custom == "1";
     const row = btn.closest("tr");
-    const id  = row.dataset.id;
-    const isCustom = row.dataset.custom == "1";
 
-    // DELETE SAVED CUSTOM ROW
     if (id && isCustom) {
         fetch(`/rate/step2/delete/${id}`, {
             method: "DELETE",
@@ -385,13 +387,6 @@ document.addEventListener("click", function (e) {
         .then(r => r.json())
         .then(res => {
             if (res.success) {
-
-                // Tell Step2Store not to re-create this row
-                document.getElementById("deleted_rows")
-                    .insertAdjacentHTML("beforeend",
-                        `<input type="hidden" name="delete_ids[]" value="${id}">`
-                    );
-
                 row.remove();
                 recalcTotals();
             }

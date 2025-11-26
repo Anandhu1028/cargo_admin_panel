@@ -427,18 +427,7 @@ public function rateStep2Store(Request $request, $calcId)
 
 
 
-public function deleteStep2Row($id)
-{
-    $row = CalculationDetail::find($id);
 
-    if (!$row || $row->is_custom != 1) {
-        return response()->json(['success' => false]);
-    }
-
-    $row->delete();
-
-    return response()->json(['success' => true]);
-}
 
 
 

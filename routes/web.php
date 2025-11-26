@@ -59,8 +59,8 @@ Route::middleware(['auth'])->prefix('admin')->group(function () {
 
     Route::post('rate-calculator/step2/{calc}', [RateCalculatorController::class, 'rateStep2Store'])->name('rate.step2.store');
 
-Route::delete('/rate/step2/delete/{id}', [RateCalculatorController::class, 'deleteStep2Row'])
-    ->name('rate.step2.delete');
+    Route::delete('/rate/step2/delete/{id}', [RateCalculatorController::class, 'deleteStep2Row'])->name('rate.step2.delete');
+
 
 
 
