@@ -12,6 +12,7 @@ class RateReport extends Model
         'calculation_id',
         'customer_name',
         'total_amount',
+         'total_charges',
         'report_data',
     ];
 

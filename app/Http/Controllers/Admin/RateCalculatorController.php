@@ -165,252 +165,284 @@ public function rateStep1Store(Request $request)
 
     return redirect()->route('rate.step2', $calc->id);
 }
+
+
+
 public function rateStep2($calcId)
 {
     $calc = Calculation::with('details')->findOrFail($calcId);
     $rules = config('rate_rules.origin');
     $cbm   = (float) ($calc->cbm ?? 0);
 
-    // Load ROE settings
-   $roeSetting = RoeSettings::where('destination', 'DESTINATION')->first();
+    // ROE settings
+    $roeSetting = RoeSettings::where('destination', 'DESTINATION')->first();
+    $globalROE = (float) ($roeSetting->roe_value ?? 1);
+    $oceanROE  = isset($roeSetting->ocean_freight_roe) && $roeSetting->ocean_freight_roe > 0
+                ? (float) $roeSetting->ocean_freight_roe
+                : $globalROE;
 
-$globalROE = (float) ($roeSetting->roe_value ?? 1);
-
-// OCEAN FREIGHT ALWAYS DEFAULTS TO 0 (unless DB has a positive override)
-$oceanROE = isset($roeSetting->ocean_freight_roe) && $roeSetting->ocean_freight_roe > 0
-    ? (float) $roeSetting->ocean_freight_roe
-    : 0;
-
-
-
-
-    // Lookup saved rows (keyed by group|particular)
+    // Saved DB rows indexed by unique key
     $saved = $calc->details->keyBy(function ($d) {
         return strtolower(trim($d->group_name)) . '|' . strtolower(trim($d->particular));
     });
 
     $filtered = [];
 
+    // --------------------------
+    // BUILD DEFAULT + SAVED ROWS
+    // --------------------------
     foreach ($rules as $group => $items) {
         $filtered[$group] = [];
 
         foreach ($items as $item) {
-            $particular = strtolower(trim($item['particular'] ?? ''));
+
+            $particular = strtolower(trim($item['particular']));
             $key = strtolower(trim($group)) . '|' . $particular;
 
-            // base/default values from config
+            // DEFAULT VALUES
             $unit = $item['unit'] ?? '-';
             $rate = (float) ($item['rate'] ?? 0);
             $roe  = (float) ($item['roe'] ?? $globalROE);
             $qty  = (float) ($item['qty'] ?? 1);
 
-            // SPECIAL: Ocean Freight should use oceanROE override
+            // Ocean freight override
             if (str_contains($particular, 'ocean freight')) {
                 $roe = $oceanROE;
             }
 
-            // Skip irrelevant rows (van / 3 tone logic)
+            // Auto skip based on CBM
             if (str_contains($particular, 'van up to 3') && $cbm > 3) continue;
-            if (str_contains($particular, '3 tone') && $cbm <= 3) continue;
+            if (str_contains($particular, '3 tone')      && $cbm <= 3) continue;
 
-            // If we have saved user data for this row, use saved values but
-            // re-calc amount using the *current* ROE (ocean override applied above).
+            // ==============
+            // IF SAVED IN DB
+            // ==============
             if ($saved->has($key)) {
                 $d = $saved[$key];
 
-                // Use saved unit/rate/qty but apply oceanROE override if needed
-                $savedUnit = $d->unit;
-                $savedQty  = (float) $d->qty;
-                $savedRate = (float) $d->rate;
-                $savedRoe  = (float) ($d->roe ?: $globalROE);
+                $filtered[$group][] = [
+                    'id'         => $d->id,
+                    'particular' => $item['particular'],
+                    'unit'       => $d->unit,
+                    'qty'        => $d->qty,
+                    'rate'       => $d->rate,
+                    'roe'        => $d->roe,
+                    'amount'     => round($d->qty * $d->rate * $d->roe, 2),
+                    'is_custom'  => $d->is_custom,
+                ];
 
-                if (str_contains($particular, 'ocean freight')) {
-                    // force ocean override for ocean freight rows
-                    $savedRoe = $oceanROE;
-                }
-
-                $amount = ($savedRate * $savedQty) / ($savedRoe > 0 ? $savedRoe : 1);
-
-                $item['unit']   = $savedUnit;
-                $item['qty']    = $savedQty;
-                $item['rate']   = $savedRate;
-                $item['roe']    = $savedRoe;
-                $item['amount'] = round($amount, 2);
-
-                $filtered[$group][] = $item;
                 continue;
             }
 
-            // Determine default qty / rate behaviour for rows with no saved data
-            $isPacking = str_contains($particular, 'packing & materials');
-            $isLabour  = str_contains($particular, 'labour');
-            $isOther   = str_contains($particular, 'other charges');
-            $isSpecial = str_contains($particular, 'special services');
-            $isStorage = str_contains($particular, 'storage');
+            // DEFAULT QTY LOGIC (ONLY FOR NON-SAVED ROWS)
+            if (str_contains($particular, 'packing'))  $qty = $cbm;
+            if (str_contains($particular, 'labour'))   $qty = 1;
+            if (str_contains($particular, 'storage'))  $qty = $cbm;
 
-            if ($isPacking) {
-                // Packing uses CBM from step1
-                $qty = $cbm;
-            } elseif ($isLabour) {
-                $qty = 1;
-            } elseif ($isOther) {
-                // other charges: leave qty 0 and rate 0 by default so user fills them
-                $qty = 0;
-                $rate = 0;
-            } elseif ($isSpecial) {
-                // special services — default to qty 1, rate left for user
-                $qty = 1;
-                // keep configured rate (could be 0)
-            } elseif ($isStorage) {
-                // storage typically uses CBM
-                $qty = $cbm;
-            } else {
-                $qty = 1;
-            }
-
-            // Always calculate AED using the canonical formula: (rate * qty) / roe
-            $amount = ($rate * $qty) / ($roe > 0 ? $roe : 1);
-
-            $item['unit']   = $unit;
-            $item['qty']    = $qty;
-            $item['rate']   = $rate;
-            $item['roe']    = $roe;
-            $item['amount'] = round($amount, 2);
-
-            $filtered[$group][] = $item;
+            // ADD DEFAULT ROW
+            $filtered[$group][] = [
+                'id'         => null,
+                'particular' => $item['particular'],
+                'unit'       => $unit,
+                'qty'        => $qty,
+                'rate'       => $rate,
+                'roe'        => $roe,
+                'amount'     => round($qty * $rate * $roe, 2),
+                'is_custom'  => 0,
+            ];
         }
     }
 
-    $rateReports = RateReport::latest()->take(50)->get();
+    // ---------------------------
+    // ADD CUSTOM DB ROWS SEPARATELY
+    // ---------------------------
+    foreach ($calc->details->where('is_custom', 1) as $d) {
 
+        $g = $d->group_name;
+        $p = strtolower(trim($d->particular));
+
+        if (!isset($filtered[$g])) $filtered[$g] = [];
+
+        // Avoid duplicating rows already listed
+        $exists = false;
+        foreach ($filtered[$g] as $row) {
+            if (strtolower(trim($row['particular'])) === $p) {
+                $exists = true;
+                break;
+            }
+        }
+        if ($exists) continue;
+
+        // Add custom row
+        $filtered[$g][] = [
+            'id'         => $d->id,
+            'particular' => $d->particular,
+            'unit'       => $d->unit,
+            'qty'        => $d->qty,
+            'rate'       => $d->rate,
+            'roe'        => $d->roe,
+            'amount'     => round($d->qty * $d->rate * $d->roe, 2),
+            'is_custom'  => 1,
+        ];
+    }
+
+    // ---------------------------
+    // RETURN VALUES TO THE BLADE
+    // ---------------------------
     return view('admin.rate.rate_step2', [
-        'calc' => $calc,
-        'rules' => $filtered,
-        'rateReports' => $rateReports,
-        'globalROE' => $globalROE,
-        'oceanROE' => $oceanROE,
+        'calc'       => $calc,
+        'rules'      => $filtered, // <-- FIXED: BLADE EXPECTS $rules
+        'globalROE'  => $globalROE,
+        'oceanROE'   => $oceanROE,
+        'rateReports' => RateReport::latest()->take(50)->get(),
     ]);
 }
 
 
 
+
+
+/**
+ * rateStep2Store - Clear & Reinsert strategy
+ *
+ * Reads all special fields and new rows; uses amount = qty * rate * roe (multiplication)
+ * Deletes all existing calculation_details for this calculation, then inserts the new set.
+ */
 public function rateStep2Store(Request $request, $calcId)
 {
     $calc = Calculation::findOrFail($calcId);
-    $rules = config('rate_rules.origin');
-    $cbm   = (float) ($calc->cbm ?? 0);
 
-    // Load ROE settings
-    $roeSetting = RoeSettings::where('destination', 'DESTINATION')->first();
-    $globalROE  = (float) ($roeSetting->roe_value ?? 1);
-    $oceanROE   = (float) ($roeSetting->ocean_freight_roe ?? $globalROE);
+    $deletedIds = $request->input('delete_ids', []);
+
+    $cbm = (float)$calc->cbm;
+    $totalVolume = 50;
 
     $detailsData = [];
+
+    $savedRows = $calc->details->keyBy(function ($d) {
+        return strtolower(trim($d->group_name)) . '|' . strtolower(trim($d->particular));
+    });
+
+    $rules = config('rate_rules.origin');
 
     foreach ($rules as $group => $items) {
         foreach ($items as $item) {
 
-            $particular = $item['particular'];
-            $key = strtolower(trim($particular));
+            $p = $item['particular'];
+            $key = strtolower(trim($group)) . '|' . strtolower(trim($p));
 
-            // Default config values
-            $unit = $item['unit'] ?? '-';
-            $rate = (float) ($item['rate'] ?? 0);
-            $roe  = (float) ($item['roe'] ?? $globalROE);
-            $qty  = (float) ($item['qty'] ?? 1);
-
-            // Ocean Freight uses special ROE
-            if (str_contains($key, 'ocean freight')) {
-                $roe = $oceanROE;
+            // DO NOT RECREATE DELETED CUSTOM ROWS
+            if ($savedRows->has($key)) {
+                $rid = $savedRows[$key]->id;
+                if (in_array($rid, $deletedIds)) {
+                    continue;
+                }
             }
 
-            // Skip irrelevant rows
-            if (str_contains($key, 'van up to 3') && $cbm > 3) continue;
-            if (str_contains($key, '3 tone') && $cbm <= 3) continue;
+            // Extract user input
+            $qty  = $request->input("qty.$group.$p") 
+                    ?? $request->input("labour_qty.$group.$p")
+                    ?? $request->input("other_qty.$group.$p")
+                    ?? $request->input("storage_qty.$group.$p")
+                    ?? ($item['qty'] ?? 1);
 
-            // User inputs
-            $userQty  = $request->input("qty.$group.$particular");
-            $userRate = $request->input("rate.$group.$particular");
+            $rate = $request->input("rate.$group.$p") 
+                    ?? $request->input("other_rate.$group.$p")
+                    ?? $request->input("special_rate.$group.$p")
+                    ?? $request->input("surrender_rate.$group.$p")
+                    ?? ($item['rate'] ?? 0);
 
-            if ($userQty  !== null && $userQty  !== '') $qty  = (float) $userQty;
-            if ($userRate !== null && $userRate !== '') $rate = (float) $userRate;
+            $roe  = $request->input("roe.$group.$p") 
+                    ?? ($item['roe'] ?? 1);
 
-            // Flags
-            $isPacking = str_contains($key, 'packing & materials');
-            $isLabour  = str_contains($key, 'labour');
-            $isOther   = str_contains($key, 'other charges');
-            $isSpecial = str_contains($key, 'special services');
-            $isStorage = str_contains($key, 'storage');
+            if ($roe <= 0) $roe = 1;
 
-            // ================================
-            // FIXED CALCULATION LOGIC (AED)
-            // amount = (rate × qty) ÷ roe
-            // ================================
+            $amount = round($qty * $rate * $roe, 2);
+            $total  = round(($amount * $cbm) / $totalVolume, 2);
 
-            if ($isPacking) {
-                $unit = $request->input("packing_unit.$group.$particular", $unit);
-                $qty  = $cbm;
-            }
-
-            elseif ($isLabour) {
-                $qty = (float) $request->input("labour_qty.$group.$particular", 1);
-            }
-
-            elseif ($isOther) {
-                $unit = $request->input("other_unit.$group.$particular", $unit);
-                $rate = (float) $request->input("other_rate.$group.$particular", $rate);
-                // qty stays zero unless you later allow editing
-                $qty = 0;
-            }
-
-            elseif ($isSpecial) {
-                $rate = (float) $request->input("special_rate.$group.$particular", $rate);
-                $qty  = 1;
-            }
-
-            elseif ($isStorage) {
-                $qty = $cbm;
-            }
-
-            else {
-                $qty = 1;
-            }
-
-            // AED calculation (corrected)
-            $amount = round(($rate * $qty) / ($roe ?: 1), 2);
+            $isCustom = $savedRows->has($key) 
+                        ? $savedRows[$key]->is_custom 
+                        : 0;
 
             $detailsData[] = [
-                'calculation_id' => $calc->id,
+                'calculation_id' => $calcId,
                 'group_name'     => $group,
-                'particular'     => $particular,
-                'unit'           => $unit,
+                'particular'     => $p,
+                'unit'           => $item['unit'] ?? '-',
                 'qty'            => $qty,
                 'rate'           => $rate,
                 'roe'            => $roe,
-                'amount'         => $amount,   // AED stored
-                'customer_name'  => optional($calc->customer)->name,
+                'amount'         => $amount,
+                'total_charge'   => $total,
+                'is_custom'      => $isCustom,
                 'created_at'     => now(),
                 'updated_at'     => now(),
             ];
         }
+
+        // NEW CUSTOM ROWS
+        if ($request->has("new_particular.$group")) {
+            $parts = $request->input("new_particular.$group");
+
+            foreach ($parts as $i => $pname) {
+
+                if (!trim($pname)) continue;
+
+                $qty  = (float) $request->input("new_qty.$group.$i");
+                $rate = (float) $request->input("new_rate.$group.$i");
+                $roe  = (float) $request->input("new_roe.$group.$i") ?: 1;
+
+                $amount = round($qty * $rate * $roe, 2);
+                $total  = round(($amount * $cbm) / $totalVolume, 2);
+
+                $detailsData[] = [
+                    'calculation_id' => $calcId,
+                    'group_name'     => $group,
+                    'particular'     => $pname,
+                    'unit'           => $request->input("new_unit.$group.$i") ?? '-',
+                    'qty'            => $qty,
+                    'rate'           => $rate,
+                    'roe'            => $roe,
+                    'amount'         => $amount,
+                    'total_charge'   => $total,
+                    'is_custom'      => 1,
+                    'created_at'     => now(),
+                    'updated_at'     => now(),
+                ];
+            }
+        }
     }
 
-    // Save to DB
-    DB::transaction(function () use ($calc, $detailsData) {
-        $calc->details()->delete();
-        CalculationDetail::insert($detailsData);
+    DB::transaction(function () use ($calc, $detailsData, $deletedIds) {
 
-        $calc->update([
-            'total_amount'  => array_sum(array_column($detailsData, 'amount')),
-            'customer_name' => optional($calc->customer)->name,
-        ]);
+        if (!empty($deletedIds)) {
+            CalculationDetail::whereIn('id', $deletedIds)->delete();
+        }
+
+        CalculationDetail::insert($detailsData);
     });
 
-    
-
-    return redirect()->route('rate.step3', $calc->id)
-        ->with('success', 'Origin charges saved successfully.');
+    return redirect()->route('rate.step3', $calcId);
 }
+
+
+
+public function deleteStep2Row($id)
+{
+    $row = CalculationDetail::find($id);
+
+    if (!$row || $row->is_custom != 1) {
+        return response()->json(['success' => false]);
+    }
+
+    $row->delete();
+
+    return response()->json(['success' => true]);
+}
+
+
+
+
 
 
 
@@ -418,11 +450,12 @@ public function rateStep3($calcId)
 {
     $calc = Calculation::with('destinationDetails')->findOrFail($calcId);
 
-    // ✅ Fetch ROE from settings by destination, or use default
+    // Fetch ROE from settings or fallback
     $destination = strtoupper($calc->port ?? 'KOCHI');
     $roeSettings = RoeSettings::where('destination', $destination)->first();
-    $defaultRoe = $roeSettings ? $roeSettings->roe_value : 0.0439;  // 1 INR = 0.0439 AED (default)
+    $defaultRoe = $roeSettings ? $roeSettings->roe_value : 0.0439;
 
+    // Default rule set (base structure)
     $rules = [
         'Liner Charges' => [
             ['particular' => 'DO INCLUDING THC', 'unit' => 'CONTAINER', 'qty' => 1, 'rate' => 34684, 'roe' => $defaultRoe],
@@ -434,8 +467,8 @@ public function rateStep3($calcId)
             ['particular' => 'EDI FILING', 'unit' => 'CONTAINER', 'qty' => 1, 'rate' => 1500, 'roe' => $defaultRoe],
             ['particular' => 'CONTAINER SCANNING', 'unit' => 'CONTAINER', 'qty' => 1, 'rate' => 200, 'roe' => $defaultRoe],
             ['particular' => 'FORKLIFT CHARGES', 'unit' => 'HOUR', 'qty' => 1, 'rate' => 1490, 'roe' => $defaultRoe],
-            ['particular' => 'STORAGE', 'unit' => 'SHIPMENT', 'qty' => 1, 'rate' => 0, 'roe' => $defaultRoe, 'extra' => '1 day 120 Rs.'],
-            ['particular' => 'DUTY', 'unit' => 'SHIPMENT', 'qty' => 0, 'rate' => 0, 'roe' => $defaultRoe, 'extra' => '36% of total value'],
+            ['particular' => 'STORAGE', 'unit' => 'SHIPMENT', 'qty' => 1, 'rate' => 0, 'roe' => $defaultRoe],
+            ['particular' => 'DUTY', 'unit' => 'SHIPMENT', 'qty' => 0, 'rate' => 0, 'roe' => $defaultRoe],
             ['particular' => 'OTHER CHARGES, IF ANY', 'unit' => '-', 'qty' => 0, 'rate' => 0, 'roe' => $defaultRoe],
         ],
         'CHA Charges' => [
@@ -450,104 +483,185 @@ public function rateStep3($calcId)
         ],
     ];
 
-    $savedDetails = $calc->destinationDetails->keyBy(fn($d) =>
-        strtolower($d->group_name . '|' . $d->particular)
-    );
+    // LOAD saved rows (group|particular)
+    $saved = $calc->destinationDetails->keyBy(function ($d) {
+        return strtolower($d->group_name . '|' . $d->particular);
+    });
 
-    $cbm = (float) ($calc->cbm ?? 1);
-
+    // Merge saved data into default rows
     foreach ($rules as $group => &$items) {
         foreach ($items as &$item) {
+
             $key = strtolower($group . '|' . $item['particular']);
-            $saved = $savedDetails->get($key);
-            if ($saved) {
-                $item['unit'] = $saved->unit;
-                $item['qty']  = $saved->qty;
-                $item['rate'] = $saved->rate;   // INR
-                $item['roe']  = $saved->roe;    // conversion factor (INR to AED)
-                $item['amount'] = $saved->amount; // AED
+
+            if (isset($saved[$key])) {
+
+                $row = $saved[$key];
+
+                $item['unit']   = $row->unit;
+                $item['qty']    = $row->qty;
+                $item['rate']   = $row->rate;
+                $item['roe']    = $row->roe;
+                $item['amount'] = $row->amount;
             } else {
-                $item['qty'] = $cbm ?: 1;
-                $item['amount'] = round($item['rate'] * $item['qty'] * $item['roe'], 2); // INR * conversion = AED
+                // Fresh calculated row
+                $qty = $item['qty'];
+                $rate = $item['rate'];
+                $roe = $item['roe'];
+
+                $item['amount'] = round($rate * $qty * $roe, 2);
             }
         }
     }
 
+    /** --------------------------------------------------------
+     * FIX: Append saved rows that are NOT part of default rules
+     * -------------------------------------------------------- */
+    foreach ($calc->destinationDetails as $row) {
+
+        $group = $row->group_name;
+
+        // If group doesn't exist in default rules → create it
+        if (!isset($rules[$group])) {
+            $rules[$group] = [];
+        }
+
+        // Check if this particular already exists in rules
+        $exists = false;
+        foreach ($rules[$group] as $item) {
+            if (strtolower($item['particular']) === strtolower($row->particular)) {
+                $exists = true;
+                break;
+            }
+        }
+
+        // If not in default → append it
+        if (!$exists) {
+            $rules[$group][] = [
+                'particular' => $row->particular,
+                'unit'       => $row->unit,
+                'qty'        => $row->qty,
+                'rate'       => $row->rate,
+                'roe'        => $row->roe,
+                'amount'     => $row->amount,
+                'is_custom' => $row->is_custom,
+
+            ];
+        }
+    }
+
+    /** END FIX */
+
     $rateReports = RateReport::latest()->take(50)->get();
+
     return view('admin.rate.rate_step3', compact('calc', 'rules', 'rateReports'));
 }
 
-
-
-//  Step 3 Store
 public function rateStep3Store(Request $request, $calcId)
 {
     $calc = Calculation::findOrFail($calcId);
+    $cbm  = (float) ($calc->cbm ?? 1);
+
+    //----------------------------------------------------------------------
+    // 1. EXISTING RULES FROM FORM  (includes default rows + custom rows)
+    //----------------------------------------------------------------------
     $rules = $request->input('rules', []);
-    $cbm   = (float) ($calc->cbm ?? 1);
 
+    //----------------------------------------------------------------------
+    // 2. ADD NEW ROWS (these automatically become custom)
+    //----------------------------------------------------------------------
+    $newParticular = $request->input('new_particular', []);
+    $newUnit       = $request->input('new_unit', []);
+    $newQty        = $request->input('new_qty', []);
+    $newRate       = $request->input('new_rate', []);
+    $newRoe        = $request->input('new_roe', []);
+
+    foreach ($newParticular as $group => $rows) {
+        foreach ($rows as $i => $p) {
+
+            if (!trim($p)) continue; // skip empty row
+
+            $rules[$group][] = [
+                'particular' => $p,
+                'unit'       => $newUnit[$group][$i] ?? '-',
+                'qty'        => (float) ($newQty[$group][$i] ?? 1),
+                'rate'       => (float) ($newRate[$group][$i] ?? 0),
+                'roe'        => (float) ($newRoe[$group][$i] ?? 1),
+                'is_custom'  => 1, // marking new rows as custom
+            ];
+        }
+    }
+
+    //----------------------------------------------------------------------
+    // 3. BUILD INSERT PAYLOAD
+    //----------------------------------------------------------------------
     $detailsData = [];
-    $totalInINR = 0;
+    $sumTotalCharge = 0;
 
-    // Build destination rows (INR → AED)
     foreach ($rules as $group => $items) {
         foreach ($items as $item) {
 
             $particular = $item['particular'];
-            $unit  = $item['unit'];
-            $qty   = (float) ($item['qty'] ?? 1);
-            $rate  = (float) ($item['rate'] ?? 0);      // INR
-            $roe   = (float) ($item['roe'] ?? 1);       // ROE = INR per AED
+            $unit = $item['unit'];
+            $qty  = (float) ($item['qty'] ?? 1);
+            $rate = (float) ($item['rate'] ?? 0);
+            $roe  = (float) ($item['roe'] ?? 1);
 
-            // Convert INR → AED
-            // amountAED = (INR rate × qty) ÷ ROE
-            $amountAED = $roe > 0 ? ($rate * $qty) / $roe : 0;
+            $amountAED   = $roe > 0 ? ($rate * $qty) / $roe : 0;
+            $totalCharge = ($amountAED * $cbm) / 50;
 
             $detailsData[] = [
                 'calculation_id' => $calc->id,
                 'customer_name'  => $calc->customer_name,
+
                 'group_name'     => $group,
                 'particular'     => $particular,
                 'unit'           => $unit,
                 'qty'            => $qty,
                 'rate'           => $rate,
                 'roe'            => $roe,
-                'amount'         => $amountAED,   // AED
+                'amount'         => $amountAED,
+                'total_charge'   => $totalCharge,
+
+                // keep custom flag if exists
+                'is_custom'      => $item['is_custom'] ?? 0,
+
                 'created_at'     => now(),
                 'updated_at'     => now(),
             ];
 
-            $totalInINR += $amountAED;
+            $sumTotalCharge += $totalCharge;
         }
     }
 
-    // ===========================
-    // SAVE TO DB (destination)
-    // ===========================
-    DB::transaction(function () use ($calc, $detailsData, $totalInINR) {
-        // Overwrite destination rows
+    //----------------------------------------------------------------------
+    // 4. SAVE TO DB
+    //----------------------------------------------------------------------
+    DB::transaction(function () use ($calc, $detailsData, $sumTotalCharge) {
+
+        // remove old rows (missing ones = deleted)
         $calc->destinationDetails()->delete();
+
+        // insert fresh rows
         DestinationCalculationDetail::insert($detailsData);
 
+        // update final total
         $calc->update([
-            'final_amount' => $totalInINR,
+            'final_amount' => $sumTotalCharge,
         ]);
     });
 
-    // ============================================================
-    // NOW → RELOAD ORIGIN & DESTINATION FROM DB FOR HISTORY
-    // ============================================================
-
+    //----------------------------------------------------------------------
+    // 5. BUILD REPORT (unchanged)
+    //----------------------------------------------------------------------
     $originDB = $calc->details()->get();
     $destinationDB = $calc->destinationDetails()->get();
 
-    // ---------- ORIGIN GROUP ----------
     $originGrouped = [];
     $originTotal = 0;
 
     foreach ($originDB as $d) {
         $g = $d->group_name;
-
         if (!isset($originGrouped[$g])) $originGrouped[$g] = [];
 
         $amountAED = ($d->rate * $d->qty) / ($d->roe ?: 1);
@@ -563,60 +677,52 @@ public function rateStep3Store(Request $request, $calcId)
         ];
     }
 
-    // ---------- DESTINATION GROUP ----------
     $destinationGrouped = [];
     $destinationTotal = 0;
 
     foreach ($destinationDB as $d) {
         $g = $d->group_name;
-
         if (!isset($destinationGrouped[$g])) $destinationGrouped[$g] = [];
 
-        // amount = INR→AED
-        $amountAED = ($d->rate * $d->qty) / ($d->roe ?: 1);
-        $destinationTotal += $amountAED;
+        $destinationTotal += $d->total_charge;
 
         $destinationGrouped[$g][] = [
-            'particular' => $d->particular,
-            'unit'       => $d->unit,
-            'qty'        => $d->qty,
-            'rate'       => $d->rate,
-            'roe'        => $d->roe,
-            'amount'     => $amountAED,
+            'particular'  => $d->particular,
+            'unit'        => $d->unit,
+            'qty'         => $d->qty,
+            'rate'        => $d->rate,
+            'roe'         => $d->roe,
+            'amount'      => $d->amount,
+            'total_charge'=> $d->total_charge,
         ];
     }
 
     $grandTotalAED = $originTotal + $destinationTotal;
 
-   // SAVE SNAPSHOT 
-RateReport::create([
-    'calculation_id' => $calc->id,
-    'customer_name'  => $calc->customer_name,
-    'total_amount'   => $grandTotalAED, // AED
+    RateReport::create([
+        'calculation_id' => $calc->id,
+        'customer_name'  => $calc->customer_name,
+        'total_amount'   => $grandTotalAED,
 
-    'report_data'    => [
-        'customer_info' => [
-            'name'          => $calc->customer_name,
-            'from_location' => $calc->from_location,
-            'to_location'   => $calc->to_location,
-            'port'          => $calc->port,
-            'cbm'           => $calc->cbm,
-            'created_at'    => $calc->created_at->format('d M Y'),
+        'report_data'    => [
+            'customer_info' => [
+                'name'          => $calc->customer_name,
+                'from_location' => $calc->from_location,
+                'to_location'   => $calc->to_location,
+                'port'          => $calc->port,
+                'cbm'           => $calc->cbm,
+                'created_at'    => $calc->created_at->format('d M Y'),
+            ],
+
+            'origin'            => $originGrouped,
+            'origin_total'      => $originTotal,
+
+            'destination'       => $destinationGrouped,
+            'destination_total' => $destinationTotal,
+
+            'grand_total'       => $grandTotalAED,
         ],
-
-        // ORIGIN (ALREADY CONVERTED TO AED)
-        'origin'        => $originGrouped,
-        'origin_total'  => $originTotal,
-
-        // DESTINATION (ALREADY CONVERTED TO AED)
-        'destination'       => $destinationGrouped,
-        'destination_total' => $destinationTotal,
-
-        // GRAND TOTAL (AED)
-        'grand_total'       => $grandTotalAED,
-    ],
-]);
-
+    ]);
 
     return redirect()
         ->route('rate.report.full', $calc->id)
@@ -625,22 +731,107 @@ RateReport::create([
 
 
 
+
 public function rateReportFull($id)
 {
     $calc = Calculation::with(['details', 'destinationDetails'])->findOrFail($id);
 
-    // Grouping for display
     $originGroups = $calc->details->groupBy('group_name');
     $destinationGroups = $calc->destinationDetails->groupBy('group_name');
 
-    $rateReports = RateReport::latest()->take(50)->get();
-    return view('admin.rate.rate_report_full', [
-        'calc' => $calc,
-        'originGroups' => $originGroups,
-        'destinationGroups' => $destinationGroups,
-        'rateReports' => $rateReports,
+    $cbm = $calc->cbm ?? 0;
+    $ratio = $cbm / 50;
+
+    $originJson = [];
+    $destinationJson = [];
+
+    $originTotal = 0;
+    $destTotal = 0;
+
+    // ========= ORIGIN JSON BUILD =========
+    foreach ($originGroups as $group => $rows) {
+
+        $originJson[$group] = [];
+
+        foreach ($rows as $r) {
+
+            $amount = ($r->qty * $r->rate) / ($r->roe ?: 1);
+            $totalCharge = $amount * $ratio;
+
+            $originTotal += $totalCharge;
+
+            $originJson[$group][] = [
+                "qty" => (string) number_format($r->qty, 2),
+                "roe" => (string) number_format($r->roe, 4),
+                "rate" => (string) number_format($r->rate, 2),
+                "unit" => $r->unit,
+                "amount" => round($amount, 2),
+                "particular" => $r->particular,
+                "total_charge" => round($totalCharge, 2)
+            ];
+        }
+    }
+
+    // ========= DESTINATION JSON BUILD =========
+    foreach ($destinationGroups as $group => $rows) {
+
+        $destinationJson[$group] = [];
+
+        foreach ($rows as $r) {
+
+            $amount = ($r->qty * $r->rate) / ($r->roe ?: 1);
+            $totalCharge = $amount * $ratio;
+
+            $destTotal += $totalCharge;
+
+            $destinationJson[$group][] = [
+                "qty" => (string) number_format($r->qty, 2),
+                "roe" => (string) number_format($r->roe, 4),
+                "rate" => (string) number_format($r->rate, 2),
+                "unit" => $r->unit,
+                "amount" => round($amount, 2),
+                "particular" => $r->particular,
+                "total_charge" => round($totalCharge, 2)
+            ];
+        }
+    }
+
+    $grandTotal = $originTotal + $destTotal;
+
+    // ========= FINAL JSON STRUCTURE =========
+    $json = [
+        "origin" => $originJson,
+        "destination" => $destinationJson,
+        "origin_total" => round($originTotal, 2),
+        "destination_total" => round($destTotal, 2),
+        "grand_total" => round($grandTotal, 2),
+        "customer_info" => [
+            "name" => $calc->customer_name,
+            "cbm" => $cbm,
+            "port" => $calc->port,
+            "from_location" => $calc->from_location,
+            "to_location" => $calc->to_location,
+            "created_at" => $calc->created_at->format('d M Y')
+        ]
+    ];
+
+    // ========= SAVE TO DB =========
+    RateReport::create([
+        'calculation_id' => $calc->id,
+        'customer_name'  => $calc->customer_name,
+        'total_amount'   => $grandTotal,
+        'total_charges'  => $grandTotal,
+        'report_data'    => json_encode($json)
     ]);
+
+    // For frontend display
+    return view('admin.rate.rate_report_full', compact(
+        'calc',
+        'originGroups',
+        'destinationGroups'
+    ));
 }
+
 
 /**
  * CLEANED HISTORY — Always shows final snapshots only.
@@ -672,6 +863,24 @@ public function deleteReport(Request $request, $id)
         ? response()->json(['message' => 'Rate report deleted successfully'])
         : back()->with('success', 'Rate report deleted successfully.');
 }
+
+public function deleteAllReports(Request $request)
+{
+    $count = RateReport::count();
+
+    if ($count === 0) {
+        return $request->expectsJson()
+            ? response()->json(['message' => 'No reports to delete'], 404)
+            : back()->with('error', 'No reports to delete.');
+    }
+
+    RateReport::query()->delete(); // uses model events, not hard truncate
+
+    return $request->expectsJson()
+        ? response()->json(['message' => 'All rate reports deleted successfully'])
+        : back()->with('success', 'All rate reports deleted successfully.');
+}
+
 
 
 }

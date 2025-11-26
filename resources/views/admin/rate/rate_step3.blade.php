@@ -41,123 +41,214 @@
               <div class="card border-0 shadow-sm">
                 <div class="card-header bg-light d-flex justify-content-between align-items-center">
                   <h6 class="fw-bold text-primary mb-0">{{ strtoupper(str_replace('_', ' ', $group)) }}</h6>
+
+                   <button type="button" 
+                                        class="btn add-row-btn" 
+                                        data-group="{{ $groupKey }}"
+                                        style="background:linear-gradient(90deg,#141824,#1e2736 60%,#253043);
+                                            color:#fff;border:none;padding:6px 14px;
+                                            font-weight:600;border-radius:8px;letter-spacing:0.4px;
+                                            box-shadow:0 4px 12px rgba(20,24,36,0.4);
+                                            transition:all .3s ease; font-size:13px;"
+                                        onmouseover="this.style.background='linear-gradient(90deg,#1e2736,#2b374f 60%,#34445e)';this.style.transform='translateY(-2px)'"
+                                        onmouseout="this.style.background='linear-gradient(90deg,#141824,#1e2736 60%,#253043)';this.style.transform='translateY(0)'">
+
+                                        <i class="fas fa-plus" style="color:#00c6ff; margin-right:5px;"></i>
+                                        Add Row
+                                    </button>
                 </div>
 
                 <div class="card-body p-0 mt-1">
                   <div class="table-responsive">
                     <table class="table table-hover align-middle mb-0">
-                      <thead class="table-light text-center">
-                        <tr>
-                          <th>Particulars</th>
-                          <th>Unit</th>
-                          <th>Qty</th>
-                          <th>Rate → INR</th>
+    <thead class="table-light text-center">
+        <tr>
+            <th>Particulars</th>
+            <th>Unit</th>
+            <th>Qty</th>
+            <th>Rate → INR</th>
+            <th>ROE</th>
+            <th>Amount → AED</th>
+            <th>Total Charge → AED</th>
+        </tr>
+    </thead>
 
-                          <th>ROE</th>
-                          <th>Amount → AED</th>
-                        </tr>
-                      </thead>
+   <tbody class="group-body text-center" data-group="{{ $groupKey }}">
 
-                      <tbody class="group-body text-center" data-group="{{ $groupKey }}">
-                        @foreach ($items as $row)
-                        @php
-                        $particular = strtolower($row['particular'] ?? '');
-                        $unit = $row['unit'] ?? '-';
-                        $rate = $row['rate'] ?? 0;
-                        $roe = $row['roe'] ?? 1;
-                        $cbm = $calc->cbm ?? 1;
+    {{-- LOOPED ROWS (NOW WITH DELETE ICON FOR CUSTOM ROWS) --}}
+    @foreach ($items as $row)
+        @php
+            $particular = strtolower($row['particular'] ?? '');
+            $unit = $row['unit'] ?? '-';
+            $rate = $row['rate'] ?? 0;
+            $roe = $row['roe'] ?? 1;
+            $cbm = $calc->cbm ?? 1;
 
-                        $isDetention = str_contains($particular, 'detention');
-                        $isStorage = str_contains($particular, 'storage');
-                        $isDuty = str_contains($particular, 'duty');
-                        $isOther = str_contains($particular, 'other charges');
-                        $isTransport = str_contains($particular, 'transportation basic');
-                        $isCBMBased = str_contains($particular, 'offloading') || str_contains($particular, 'unboxing')
-                        || str_contains($particular, 'fitting') || str_contains($particular, 'fixing');
+            $isDetention = str_contains($particular, 'detention');
+            $isStorage = str_contains($particular, 'storage');
+            $isDuty = str_contains($particular, 'duty');
+            $isOther = str_contains($particular, 'other charges');
+            $isTransport = str_contains($particular, 'transportation basic');
 
-                        $qty = $isCBMBased ? $cbm : 1;
-                        $amount = round(($qty * $rate) / ($roe ?: 1), 2);
-                        @endphp
+            $isCBMBased = str_contains($particular, 'offloading') ||
+                          str_contains($particular, 'unboxing') ||
+                          str_contains($particular, 'fitting') ||
+                          str_contains($particular, 'fixing');
 
-                        <tr>
-                          <!-- PARTICULAR -->
-                          <td class="text-start ps-3">
-                            {{ ucfirst($row['particular']) }}
-                            <!-- ✅ Hidden input ensures 'particular' is saved -->
-                            <input type="hidden" name="rules[{{ $group }}][{{ $loop->index }}][particular]"
-                              value="{{ $row['particular'] }}">
-                          </td>
+            $qty = $isCBMBased ? $cbm : 1;
+            $amount = round(($qty * $rate) / ($roe ?: 1), 2);
 
-                          <!-- UNIT -->
-                          <td>
-                            @if ($isOther || $isTransport)
-                            <input type="text" name="rules[{{ $group }}][{{ $loop->index }}][unit]"
-                              value="{{ $unit !== '-' ? $unit : '' }}" placeholder="Unit"
-                              class="form-control form-control-sm short-input text-center">
-                            @else
-                            <input type="text" readonly
-                              class="form-control form-control-sm short-input text-center bg-transparent border-0"
-                              value="{{ $unit }}">
-                            <input type="hidden" name="rules[{{ $group }}][{{ $loop->index }}][unit]"
-                              value="{{ $unit }}">
-                            @endif
-                          </td>
+            // NEW — detect custom rows
+            $isCustom = $row['is_custom'] ?? 0;
+        @endphp
 
-                          <!-- QTY -->
-                          <td>
-                            <input type="text" readonly
-                              class="form-control form-control-sm short-input text-end bg-transparent border-0"
-                              value="{{ number_format($qty, 2) }}">
-                            <input type="hidden" name="rules[{{ $group }}][{{ $loop->index }}][qty]" value="{{ $qty }}">
-                          </td>
+        <tr>
+            <td class="text-start ps-3">
+                {{ ucfirst($row['particular']) }}
+                <input type="hidden"
+                       name="rules[{{ $group }}][{{ $loop->index }}][particular]"
+                       value="{{ $row['particular'] }}">
+            </td>
 
-                          <!-- RATE -->
-                          <td>
-                            @if ($isDetention || $isStorage || $isDuty || $isOther)
-                            <input type="number" step="0.01" min="0"
-                              name="rules[{{ $group }}][{{ $loop->index }}][rate]"
-                              value="{{ number_format($rate, 2, '.', '') }}"
-                              class="form-control form-control-sm short-input text-end rate-input">
-                            @else
-                            <input type="text" readonly
-                              class="form-control form-control-sm short-input text-end bg-transparent border-0"
-                              value="{{ number_format($rate, 2) }}">
-                            <input type="hidden" name="rules[{{ $group }}][{{ $loop->index }}][rate]"
-                              value="{{ number_format($rate, 2, '.', '') }}">
-                            @endif
-                          </td>
+            <td>
+                @if ($isOther || $isTransport)
+                    <input type="text"
+                           name="rules[{{ $group }}][{{ $loop->index }}][unit]"
+                           value="{{ $unit !== '-' ? $unit : '' }}"
+                           class="form-control form-control-sm short-input text-center">
+                @else
+                    <input type="text" readonly
+                           class="form-control form-control-sm short-input text-center bg-transparent border-0"
+                           value="{{ $unit }}">
+                    <input type="hidden"
+                           name="rules[{{ $group }}][{{ $loop->index }}][unit]"
+                           value="{{ $unit }}">
+                @endif
+            </td>
 
-                          <!-- ROE -->
-                          <td>
-                            <input type="text" readonly
-                              class="form-control form-control-sm short-input text-end bg-transparent border-0"
-                              value="{{ number_format($roe, 4) }}">
-                            <input type="hidden" name="rules[{{ $group }}][{{ $loop->index }}][roe]" value="{{ $roe }}">
-                          </td>
+            <td>
+                <input type="text" readonly
+                       class="form-control form-control-sm short-input text-end bg-transparent border-0"
+                       value="{{ number_format($qty, 2) }}">
+                <input type="hidden"
+                       name="rules[{{ $group }}][{{ $loop->index }}][qty]"
+                       value="{{ $qty }}">
+            </td>
 
-                          <!-- AMOUNT -->
-                          <td class="text-end pe-3">
-                            <input type="text" readonly
-                              class="form-control form-control-sm short-input text-end bg-transparent border-0 fw-semibold amount-display"
-                              value="{{ number_format($amount, 2) }}">
-                          </td>
-                        </tr>
-                        @endforeach
+            <td>
+                @if ($isDetention || $isStorage || $isDuty || $isOther)
+                    <input type="number" step="0.01" min="0"
+                           name="rules[{{ $group }}][{{ $loop->index }}][rate]"
+                           value="{{ number_format($rate, 2, '.', '') }}"
+                           class="form-control form-control-sm short-input text-end rate-input">
+                @else
+                    <input type="text" readonly
+                           class="form-control form-control-sm short-input text-end bg-transparent border-0"
+                           value="{{ number_format($rate, 2) }}">
+                    <input type="hidden"
+                           name="rules[{{ $group }}][{{ $loop->index }}][rate]"
+                           value="{{ number_format($rate, 2, '.', '') }}">
+                @endif
+            </td>
 
-                        <tr class="table-primary fw-bold group-total-row">
-                          <td colspan="5" class="text-end">
-                            TOTAL {{ strtoupper(str_replace('_',' ',$group)) }}
-                          </td>
-                          <td class="text-end pe-3"><span class="group-total">0.00</span></td>
-                        </tr>
-                      </tbody>
+            <td>
+                <input type="text" readonly
+                       class="form-control form-control-sm short-input text-end bg-transparent border-0"
+                       value="{{ number_format($roe, 4) }}">
+                <input type="hidden"
+                       name="rules[{{ $group }}][{{ $loop->index }}][roe]"
+                       value="{{ $roe }}">
+            </td>
+
+            <td class="text-end pe-3">
+                <input type="text" readonly
+                       class="form-control form-control-sm short-input text-end bg-transparent border-0 fw-semibold amount-display"
+                       value="{{ number_format($amount, 2) }}">
+            </td>
+
+            <td class="text-end pe-3">
+                <input type="text" readonly
+                       class="form-control form-control-sm short-input text-end bg-transparent border-0 fw-semibold total-charge-display"
+                       value="{{ number_format(($amount * $calc->cbm) / 50, 2) }}">
+
+                {{-- NEW — SHOW DELETE ICON FOR CUSTOM ROWS --}}
+                @if($isCustom == 1)
+                    <i class="fa-regular fa-trash-can remove-row-btn"
+                       style="color:#d00000; cursor:pointer; font-size:16px; margin-left:8px;"></i>
+                @endif
+            </td>
+        </tr>
+
+    @endforeach
 
 
+    {{-- TEMPLATE ROW FOR JS – unchanged --}}
+    <tr class="d-none new-row-template" data-group="{{ $groupKey }}">
 
+        <td class="text-start ps-3">
+            <input type="text"
+                   name="new_particular[{{ $group }}][]"
+                   class="form-control form-control-sm"
+                   placeholder="Particulars">
+        </td>
 
+        <td>
+            <input type="text"
+                   name="new_unit[{{ $group }}][]"
+                   class="form-control form-control-sm text-center"
+                   placeholder="Unit">
+        </td>
 
+        <td>
+            <input type="number" step="0.01" min="0"
+                   name="new_qty[{{ $group }}][]"
+                   class="form-control form-control-sm text-end qty-input"
+                   placeholder="Qty">
+        </td>
 
-                    </table>
+        <td>
+            <input type="number" step="0.01" min="0"
+                   name="new_rate[{{ $group }}][]"
+                   class="form-control form-control-sm text-end rate-input"
+                   placeholder="Rate">
+        </td>
+
+        <td>
+            <input type="number" step="0.0001" min="0"
+                   name="new_roe[{{ $group }}][]"
+                   class="form-control form-control-sm text-end"
+                   value="1">
+        </td>
+
+        <td class="text-end pe-3">
+            <input type="text" readonly
+                   class="form-control-plaintext text-end fw-semibold amount-display"
+                   value="0.00">
+        </td>
+
+        <td class="text-end pe-3">
+            <input type="text" readonly
+                   class="form-control-plaintext text-end fw-semibold total-charge-display"
+                   value="0.00">
+
+            <i class="fa-regular fa-trash-can remove-row-btn"
+               style="color:#d00000; cursor:pointer; font-size:16px; margin-left:8px;"></i>
+        </td>
+    </tr>
+
+    <tr class="table-primary fw-bold group-total-row">
+        <td colspan="6" class="text-end">
+            TOTAL {{ strtoupper(str_replace('_',' ',$group)) }}
+        </td>
+        <td class="text-end pe-3">
+            <span class="group-total">0.00 AED</span>
+        </td>
+    </tr>
+
+</tbody>
+
+</table>
+
                   </div>
                 </div>
               </div>
@@ -324,103 +415,131 @@
 
 @push('scripts')
 <script>
-  document.addEventListener("DOMContentLoaded", function () {
+document.addEventListener("DOMContentLoaded", function () {
+
+    // ADD ROW
+    document.querySelectorAll(".add-row-btn").forEach(btn => {
+        btn.addEventListener("click", function () {
+            const group = this.dataset.group;
+            const body = document.querySelector(`tbody[data-group="${group}"]`);
+            const template = body.querySelector(".new-row-template");
+
+            let row = template.cloneNode(true);
+            row.classList.remove("d-none", "new-row-template");
+            row.classList.add("calc-row");
+
+            // FIX 1: Add required classes to cloned template inputs
+            row.querySelector("[data-field='rate']")?.classList.add("rate-input");
+            row.querySelector("[data-field='qty']")?.classList.add("qty-input");
+            row.querySelector(".amount-field")?.classList.add("amount-display");
+            row.querySelector(".total-charge-field")?.classList.add("total-charge-display");
+
+            // Insert above the total row
+            body.insertBefore(row, body.querySelector(".group-total-row"));
+        });
+    });
+
+    // DELETE ROW
+    document.addEventListener("click", function (e) {
+        if (e.target.classList.contains("remove-row-btn")) {
+            const row = e.target.closest("tr");
+            if (row) row.remove();
+            updateTotals();
+        }
+    });
+
+});
+</script>
+
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+
     const cbm = parseFloat(document.getElementById("cbm-val").textContent) || 0;
-    const format = n => Number(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const TOTAL_VOLUME = 50;
+
+    const format = n =>
+        Number(n || 0).toLocaleString("en-IN", {
+            minimumFractionDigits: 2, maximumFractionDigits: 2
+        });
+
     const num = s => parseFloat((s || "0").replace(/[^0-9.\-]/g, "")) || 0;
 
-    // 🔹 1. Fetch ROE from settings or live API
-    let liveROE = 0.0439; // fallback (1 INR = 0.0439 AED)
+    let liveROE = 0.0439;
     const port = "{{ strtoupper($calc->port ?? 'KOCHI') }}";
 
-    // First, try to get ROE from database settings
+    // LOAD ROE
     fetch(`/admin/api/roe/${port}`)
-      .then(r => {
-        if (r.ok) return r.json();
-        throw new Error('ROE not in database, using live API');
-      })
-      .then(data => {
-        if (data && data.roe_value) {
-          liveROE = parseFloat(data.roe_value);
-          console.log(`✅ ROE loaded from database: 1 INR = ${liveROE.toFixed(4)} AED`);
-          applyROE(liveROE);
-        }
-      })
-      .catch(() => {
-        // If not in database, fetch live rate
-        console.log('📡 Fetching live ROE from API...');
-        fetch("https://api.exchangerate.host/convert?from=INR&to=AED")
-          .then(r => r.json())
-          .then(data => {
-            if (data && data.info && data.info.rate) {
-              liveROE = parseFloat(data.info.rate);
-            }
-          })
-          .catch(() => console.warn("⚠️ Using fallback ROE 0.0439"))
-          .finally(() => {
+        .then(r => r.ok ? r.json() : Promise.reject())
+        .then(data => {
+            if (data?.roe_value) liveROE = parseFloat(data.roe_value);
             applyROE(liveROE);
-          });
-      });
-
-    // 🔹 2. Apply ROE
-    function applyROE(roe) {
-      document.querySelectorAll("input[name*='[roe]']").forEach(inp => {
-        inp.value = roe.toFixed(4);
-        const td = inp.closest("td");
-        const display = td.querySelector("input[readonly].bg-transparent");
-        if (display) display.value = roe.toFixed(4);
-      });
-
-      document.querySelectorAll(".group-body tr").forEach(row => recalc(row, roe));
-      updateTotals();
-      console.log(`✅ ROE Applied: 1 INR = ${roe.toFixed(4)} AED`);
-    }
-
-    // 🔹 3. Recalculate per row (rate INR → amount AED)
-    function recalc(row, roe) {
-      if (row.classList.contains("group-total-row")) return;
-
-      const qty = num(row.querySelector('input[name*="[qty]"]')?.value || 1);
-      const rate = num(row.querySelector(".rate-input")?.value || row.querySelector('input[name*="[rate]"]')?.value || 0);
-      // amount in AED = (qty * rate in INR) / roe (INR per AED)
-      const amount = (qty * rate) / (roe || 1);
-
-      // ✅ Label only the Rate column with INR
-      const rateCell = row.children[3]; // the 4th column = Rate
-      const rateDisplay = rateCell.querySelector("input[readonly].bg-transparent");
-      if (rateDisplay && !rateDisplay.value.includes("INR")) {
-        rateDisplay.value = `₹ ${format(rate)} INR`;
-      }
-
-      // ✅ Amount column in AED
-      const amountField = row.querySelector(".amount-display");
-      if (amountField) {
-        amountField.value = `${format(amount)} AED`;
-      }
-    }
-
-    // 🔹 4. Calculate totals (AED)
-    function updateTotals() {
-      document.querySelectorAll("tbody.group-body").forEach(group => {
-        let total = 0;
-        group.querySelectorAll("tr:not(.group-total-row) .amount-display").forEach(a => {
-          total += num(a.value || a.textContent);
+        })
+        .catch(() => {
+            fetch("https://api.exchangerate.host/convert?from=INR&to=AED")
+                .then(r => r.json())
+                .then(d => { if (d?.info?.rate) liveROE = parseFloat(d.info.rate); })
+                .finally(() => applyROE(liveROE));
         });
-        const totalCell = group.querySelector(".group-total");
-        if (totalCell) {
-          totalCell.textContent = `${format(total)} AED`;
-        }
-      });
+
+    function applyROE(roe) {
+        document.querySelectorAll("input[name*='[roe]']").forEach(inp => {
+            inp.value = roe.toFixed(4);
+            const disp = inp.closest("td").querySelector("input[readonly].bg-transparent");
+            if (disp) disp.value = roe.toFixed(4);
+        });
+
+        document.querySelectorAll(".group-body tr").forEach(row => recalc(row, roe));
+        updateTotals();
     }
 
-    // 🔹 5. Live update on input
-    document.querySelectorAll(".rate-input").forEach(inp => {
-      inp.addEventListener("input", () => {
-        recalc(inp.closest("tr"), liveROE);
-        updateTotals();
-      });
+    function recalc(row, roe) {
+
+        if (row.classList.contains("group-total-row")) return;
+
+        const qty =
+            num(row.querySelector(".qty-input")?.value ||
+                row.querySelector('input[name*="[qty]"]')?.value);
+
+        const rate =
+            num(row.querySelector(".rate-input")?.value ||
+                row.querySelector('input[name*="[rate]"]')?.value);
+
+        const amount = (qty * rate) / (roe || 1);
+
+        const amountField = row.querySelector(".amount-display");
+        if (amountField) amountField.value = `${format(amount)} AED`;
+
+        const totalCharge = (amount * cbm) / TOTAL_VOLUME;
+
+        const chargeField = row.querySelector(".total-charge-display");
+        if (chargeField) chargeField.value = `${format(totalCharge)} AED`;
+    }
+
+    function updateTotals() {
+        document.querySelectorAll("tbody.group-body").forEach(group => {
+            let groupTotal = 0;
+            group.querySelectorAll(".total-charge-display")
+                .forEach(el => groupTotal += num(el.value));
+            const totalCell = group.querySelector(".group-total");
+            if (totalCell) totalCell.textContent = `${format(groupTotal)} AED`;
+        });
+    }
+
+    // FIX 2: UNIVERSAL DELEGATED LISTENER (works for added rows too)
+    document.addEventListener("input", function (e) {
+        if (e.target.classList.contains("rate-input") ||
+            e.target.classList.contains("qty-input")) {
+
+            const row = e.target.closest("tr");
+            recalc(row, liveROE);
+            updateTotals();
+        }
     });
-  });
+
+});
 </script>
+
+
 @endpush
  

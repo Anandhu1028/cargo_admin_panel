@@ -11,8 +11,8 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('roe_settings', function (Blueprint $table) {
-            $table->decimal('ocean_freight_roe', 10, 4)->nullable();
+        Schema::table('destination_calculation_details', function (Blueprint $table) {
+            $table->boolean('is_custom')->default(0);
         });
     }
 
@@ -21,7 +21,7 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('roe_settings', function (Blueprint $table) {
+        Schema::table('destination_calculation_details', function (Blueprint $table) {
             //
         });
     }

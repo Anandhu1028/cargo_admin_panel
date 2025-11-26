@@ -43,6 +43,9 @@ Route::middleware(['auth'])->prefix('admin')->group(function () {
     // Rate Calculation History
     Route::get('rate-history', [RateCalculatorController::class, 'history'])->name('rate.history');
     Route::delete('rate-history/{id}', [RateCalculatorController::class, 'deleteReport'])->name('rate.history.delete');
+    Route::delete('rate-history', [RateCalculatorController::class, 'deleteAllReports'])
+    ->name('rate.history.deleteAll');
+
 
     
 
@@ -53,9 +56,19 @@ Route::middleware(['auth'])->prefix('admin')->group(function () {
     Route::post('rate-calculator/step1', [RateCalculatorController::class, 'rateStep1Store'])->name('rate.step1.store');
 
     Route::get('rate-calculator/step2/{calc}', [RateCalculatorController::class, 'rateStep2'])->name('rate.step2');
+
     Route::post('rate-calculator/step2/{calc}', [RateCalculatorController::class, 'rateStep2Store'])->name('rate.step2.store');
 
+Route::delete('/rate/step2/delete/{id}', [RateCalculatorController::class, 'deleteStep2Row'])
+    ->name('rate.step2.delete');
+
+
+
+ 
+
      Route::get('/step3/{calc}', [RateCalculatorController::class, 'rateStep3'])->name('rate.step3');
+    
+
     Route::post('/step3/{calc}', [RateCalculatorController::class, 'rateStep3Store'])->name('rate.step3.store');
 
 
