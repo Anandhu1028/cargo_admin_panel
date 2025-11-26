@@ -425,7 +425,6 @@
 
 @push('scripts')
 <script>
-  
 document.addEventListener("DOMContentLoaded", function () {
 
     // ADD ROW
